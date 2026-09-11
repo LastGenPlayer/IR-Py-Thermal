@@ -19,7 +19,7 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
-from .resolutions import SPECIAL_ROWS, ResolutionParams
+from irthermal.core.resolutions import SPECIAL_ROWS, ResolutionParams
 
 FrameWords = npt.NDArray[np.uint16]
 """One complete frame as flat u16 words: visible pixels then telemetry rows."""

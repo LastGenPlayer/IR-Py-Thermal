@@ -14,7 +14,11 @@ from typing import Any
 import numpy as np
 import pytest
 
-from irthermal.core.resolutions import ResolutionParams, params_for_width
+from irthermal.camera.processing import clamp_to_table
+from irthermal.core.frame import Frame
+from irthermal.core.radiometry import RadiometryInputs, build_temperature_table
+from irthermal.core.resolutions import SPECIAL_ROWS, ResolutionParams, params_for_width
+from irthermal.core.telemetry import parse_telemetry
 
 ALL_WIDTHS = (240, 256, 384, 640)
 
@@ -149,7 +153,42 @@ def random_spec(rng: np.random.Generator) -> FrameSpec:
     )
 
 
+def build_capture(params: ResolutionParams, spec: FrameSpec | None = None) -> np.ndarray:
+    """A synthetic frame shaped the way captures are stored on disk."""
+    words = build_frame(params, spec)
+    return words.reshape(params.height + SPECIAL_ROWS, params.width)
+
+
+def make_frame(
+    params: ResolutionParams,
+    spec: FrameSpec | None = None,
+    *,
+    camera_id: str = "test",
+    sequence: int = 1,
+) -> Frame:
+    """A fully assembled Frame, for consumers that need one without a camera."""
+    words = build_frame(params, spec)
+    telemetry = parse_telemetry(words, params)
+    # Mirror what the capture thread does, clamping included.
+    image = clamp_to_table(words[: params.pixel_count].reshape(params.height, params.width).copy())
+    image.setflags(write=False)
+    return Frame(
+        camera_id=camera_id,
+        sequence=sequence,
+        captured_at=float(sequence),
+        raw=image,
+        telemetry=telemetry,
+        table=build_temperature_table(RadiometryInputs.from_telemetry(telemetry, params)),
+    )
+
+
 @pytest.fixture(params=ALL_WIDTHS, ids=lambda w: f"{w}px")
 def params(request: Any) -> ResolutionParams:
     """Every supported resolution, one test run each."""
     return params_for_width(request.param)
+
+
+@pytest.fixture
+def small_params() -> ResolutionParams:
+    """The smallest supported sensor, for tests that do not vary resolution."""
+    return params_for_width(240)

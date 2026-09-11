@@ -31,8 +31,8 @@ from functools import lru_cache
 import numpy as np
 import numpy.typing as npt
 
-from .resolutions import MAX_RAW_VALUE, ResolutionParams
-from .telemetry import ZERO_CELSIUS, CameraTelemetry
+from irthermal.core.resolutions import MAX_RAW_VALUE, ResolutionParams
+from irthermal.core.telemetry import ZERO_CELSIUS, CameraTelemetry
 
 TemperatureTable = npt.NDArray[np.float64]
 

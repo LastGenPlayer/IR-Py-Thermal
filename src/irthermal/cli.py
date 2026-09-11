@@ -14,7 +14,7 @@ from typing import Annotated
 import typer
 from pydantic import ValidationError
 
-from .config import DEFAULT_CONFIG_PATH, load_settings
+from irthermal.config import DEFAULT_CONFIG_PATH, load_settings
 
 app = typer.Typer(
     name="irthermal",
