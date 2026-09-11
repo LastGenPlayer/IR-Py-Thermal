@@ -26,6 +26,7 @@ from prometheus_client.registry import Collector
 from irthermal.api.routes import router
 from irthermal.camera.manager import CameraManager
 from irthermal.config import Settings
+from irthermal.jobs import JobStore
 from irthermal.logging import get_logger
 from irthermal.metrics import CameraCollector
 
@@ -47,6 +48,7 @@ def create_app(
     from the settings.
     """
     camera_manager = manager if manager is not None else CameraManager(settings)
+    jobs = JobStore(camera_manager)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
@@ -55,6 +57,9 @@ def create_app(
         try:
             yield
         finally:
+            # Jobs first: a lock-in run holds a subscription and a switched
+            # load, and the load must be released before the cameras go.
+            await jobs.close()
             await camera_manager.stop()
             log.info("server.stopped")
 
@@ -67,6 +72,7 @@ def create_app(
 
     app.state.settings = settings
     app.state.manager = camera_manager
+    app.state.jobs = jobs
 
     registry = CollectorRegistry()
     registry.register(CameraCollector(camera_manager, settings))

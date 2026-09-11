@@ -17,6 +17,7 @@ from dataclasses import asdict
 from typing import Annotated, Literal
 
 import numpy as np
+import numpy.typing as npt
 from fastapi import (
     APIRouter,
     Depends,
@@ -29,12 +30,14 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 
-from irthermal.api.deps import Camera, CurrentFrame, Manager, SocketCamera
+from irthermal.api.deps import Camera, CurrentFrame, Job, Jobs, Manager, SocketCamera
 from irthermal.api.schemas import (
     AdjustmentsOut,
     CameraDetailOut,
     CameraStatusOut,
     HealthOut,
+    LockInJobOut,
+    LockInRequest,
     MeasurementOut,
     ParametersRequest,
     RangeRequest,
@@ -46,7 +49,19 @@ from irthermal.api.schemas import (
     celsius,
 )
 from irthermal.camera.base import CameraError
-from irthermal.core.render import COLORMAPS, RenderOptions, UnknownColormapError, resolve_colormap
+from irthermal.camera.modulator import ModulatorError
+from irthermal.core.lockin import LockInResult
+from irthermal.core.render import (
+    COLORMAPS,
+    DEFAULT_COLORMAP,
+    RenderOptions,
+    UnknownColormapError,
+    colorize,
+    encode_png,
+    normalize,
+    resolve_colormap,
+)
+from irthermal.jobs import JobConflictError, LockInJob
 from irthermal.logging import get_logger
 
 log = get_logger(__name__)
@@ -361,3 +376,132 @@ async def set_parameters(camera: Camera, body: ParametersRequest) -> Adjustments
         camera.set_temperature_offset(body.temperature_offset)
 
     return AdjustmentsOut.of(camera.adjustments)
+
+
+# --- lock-in ----------------------------------------------------------------
+
+LOCKIN_COMPONENTS = ("magnitude", "phase", "in_phase", "quadrature")
+Component = Literal["magnitude", "phase", "in_phase", "quadrature"]
+
+
+def component_of(result: LockInResult, name: Component) -> npt.NDArray[np.float64]:
+    """One image out of a finished run."""
+    if name == "magnitude":
+        return result.magnitude
+    if name == "phase":
+        return result.phase_degrees
+    return result.in_phase if name == "in_phase" else result.quadrature
+
+
+def result_render_options(
+    colormap: Annotated[str, Query(description="Palette name.")] = DEFAULT_COLORMAP,
+    equalize: Annotated[bool, Query(description="Equalise the histogram.")] = False,
+    upscale: Annotated[int, Query(ge=1, le=MAX_UPSCALE)] = 1,
+) -> RenderOptions:
+    """Render settings for a lock-in image.
+
+    Separate from `render_options` because a lock-in component is not a
+    temperature field: its units are sensor counts, degrees of phase or Celsius
+    of swing depending on what was asked for, so a fixed Celsius window would be
+    meaningless. These always auto-scale.
+    """
+    try:
+        resolve_colormap(colormap)
+    except UnknownColormapError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+
+    return RenderOptions(colormap=colormap, equalize=equalize, upscale=upscale)
+
+
+def finished_result(job: LockInJob) -> LockInResult:
+    """The job's result, or an explanation of why there isn't one yet."""
+    if job.result is not None:
+        return job.result
+
+    detail = job.error if job.state == "failed" else f"job {job.id} is {job.state}"
+    code = (
+        status.HTTP_409_CONFLICT
+        if job.state == "running"
+        else status.HTTP_422_UNPROCESSABLE_CONTENT
+    )
+    raise HTTPException(code, detail=detail or f"job {job.id} produced no result")
+
+
+@router.post(
+    "/cameras/{camera_id}/lockin",
+    response_model=LockInJobOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["lock-in"],
+)
+async def start_lockin(camera: Camera, jobs: Jobs, body: LockInRequest) -> LockInJobOut:
+    """Start a lock-in run. Returns immediately; poll the job for progress."""
+    try:
+        job = jobs.submit(
+            camera.config.id,
+            frequency_hz=body.frequency_hz,
+            integration_s=body.integration_s,
+            signal=body.signal,
+        )
+    except JobConflictError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from None
+    except ModulatorError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from None
+
+    return LockInJobOut.of(job)
+
+
+@router.get("/jobs", response_model=list[LockInJobOut], tags=["lock-in"])
+async def list_jobs(jobs: Jobs) -> list[LockInJobOut]:
+    """Every run this process still remembers, oldest first."""
+    return [LockInJobOut.of(job) for job in jobs]
+
+
+@router.get("/jobs/{job_id}", response_model=LockInJobOut, tags=["lock-in"])
+async def get_job_status(job: Job) -> LockInJobOut:
+    """One run's progress."""
+    return LockInJobOut.of(job)
+
+
+@router.delete("/jobs/{job_id}", response_model=LockInJobOut, tags=["lock-in"])
+async def cancel_job(job: Job, jobs: Jobs) -> LockInJobOut:
+    """Stop a run and release its load. Finished runs are left alone."""
+    return LockInJobOut.of(await jobs.cancel(job.id))
+
+
+@router.get("/jobs/{job_id}/result.npz", tags=["lock-in"])
+async def lockin_arrays(job: Job) -> Response:
+    """Both demodulated components, for analysis rather than viewing.
+
+    Readable with `numpy.load`, which gives a mapping of `in_phase` and
+    `quadrature`. Magnitude and phase are derived from those two, so storing
+    them as well would only be a chance for the file to disagree with itself.
+    """
+    result = finished_result(job)
+
+    buffer = io.BytesIO()
+    np.savez_compressed(buffer, in_phase=result.in_phase, quadrature=result.quadrature)
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{job.camera_id}-{job.id}.npz"',
+            "X-Lockin-Frames": str(result.frames),
+            "X-Lockin-Frequency-Hz": str(result.frequency_hz),
+        },
+    )
+
+
+@router.get("/jobs/{job_id}/result.png", tags=["lock-in"])
+async def lockin_image(
+    job: Job,
+    options: Annotated[RenderOptions, Depends(result_render_options)],
+    component: Annotated[Component, Query(description="Which image to render.")] = "magnitude",
+) -> Response:
+    """One component of a finished run, rendered."""
+    result = finished_result(job)
+    image = colorize(normalize(component_of(result, component), options), options)
+    return Response(
+        content=encode_png(image),
+        media_type="image/png",
+        headers={"Cache-Control": "no-store", "X-Lockin-Component": component},
+    )

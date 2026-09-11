@@ -5,10 +5,12 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import math
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 
+import cv2
 import numpy as np
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -39,6 +41,87 @@ def emulator(spec: FrameSpec | None = None):
 
 def unavailable() -> CameraSource:
     raise CameraUnavailableError("unplugged")
+
+
+LOCKIN_FREQUENCY_HZ = 4.0
+LOCKIN_AMPLITUDE = 8_000.0
+LOCKIN_BASE = 8_000.0
+"""Equal to the amplitude, so the signal swings down to zero and the pedestal is
+as small as a non-negative raw value allows.
+
+That ratio is what bounds this test's accuracy. Nothing subtracts the mean --
+v1 did not, and parity is the point -- so the pedestal leaks into any window
+that is not a whole number of evenly spaced periods, and the error scales with
+the pedestal rather than with the signal. A live test cannot land on such a
+window, however evenly it tries to pace itself.
+`test_an_incomplete_window_leaks_the_background` pins the effect down where the
+sampling can be controlled exactly."""
+
+LOCKIN_FPS = 60.0
+"""A 16.7 ms interval, chosen to sit just above this platform's 15.6 ms timer
+granularity. Asking for 120 fps gets clumps of frames rather than evenly spaced
+ones, and uneven spacing is precisely what stops the pedestal cancelling."""
+
+LOCKIN_INTEGRATION_S = 2.0
+"""Eight periods. The leak falls as the window lengthens, so this buys accuracy
+that a shorter run cannot have; the tests that do not measure amplitude use a
+much shorter one."""
+
+
+class ModulatedSource:
+    """A capture whose visible pixels swing at a known frequency and amplitude.
+
+    The whole point of a lock-in run is to pull a known signal out of a scene,
+    so the fixture has to put one in. What goes in here is what the result has
+    to come back with.
+    """
+
+    def __init__(self, capture: np.ndarray) -> None:
+        self._params = PARAMS
+        self._words = np.ascontiguousarray(capture, dtype=np.uint16).ravel().copy()
+        self._interval = 1.0 / LOCKIN_FPS
+        self._started = time.monotonic()
+        self._next_due = self._started
+        self._closed = False
+        self.commands: list[int] = []
+
+    @property
+    def params(self):
+        return self._params
+
+    @property
+    def camera_raw(self) -> bool:
+        return False
+
+    @property
+    def description(self) -> str:
+        return f"modulated({LOCKIN_FREQUENCY_HZ} Hz)"
+
+    def read_words(self) -> np.ndarray:
+        if self._closed:
+            raise CameraUnavailableError("modulated source is closed")
+
+        delay = self._next_due - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
+        self._next_due = max(self._next_due + self._interval, time.monotonic())
+
+        phase = 2 * math.pi * LOCKIN_FREQUENCY_HZ * (time.monotonic() - self._started)
+        self._words[: self._params.pixel_count] = round(
+            LOCKIN_BASE + LOCKIN_AMPLITUDE * math.sin(phase)
+        )
+        return self._words
+
+    def send_command(self, payload: int) -> bool:
+        self.commands.append(payload)
+        return True
+
+    def close(self) -> None:
+        self._closed = True
+
+
+def modulated() -> CameraSource:
+    return ModulatedSource(build_capture(PARAMS))
 
 
 @pytest.fixture
@@ -86,6 +169,31 @@ async def degraded_client(settings: Settings) -> AsyncIterator[AsyncClient]:
     ):
         await manager.get("rack").wait_for_frame(timeout=5.0)
         yield http_client
+
+
+@pytest.fixture
+async def lockin_client(settings: Settings) -> AsyncIterator[AsyncClient]:
+    """A camera carrying a planted modulation, for the lock-in endpoints."""
+    manager = CameraManager(settings, {"rack": modulated, "bench": emulator()})
+    app = create_app(settings, manager)
+
+    async with (
+        AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http_client,
+        app.router.lifespan_context(app),
+    ):
+        await manager.get("rack").wait_for_frame(timeout=5.0)
+        yield http_client
+
+
+async def finished_job(client: AsyncClient, job_id: str, timeout: float = 20.0) -> dict:
+    """Poll a job until it stops running."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        body = (await client.get(f"/api/jobs/{job_id}")).json()
+        if body["state"] != "running":
+            return body
+        await asyncio.sleep(0.05)
+    raise AssertionError(f"job {job_id} never finished")  # pragma: no cover
 
 
 @asynccontextmanager
@@ -228,8 +336,6 @@ async def test_snapshot_returns_a_png(client: AsyncClient) -> None:
 
 
 async def test_snapshot_honours_upscaling(client: AsyncClient) -> None:
-    import cv2
-
     plain = await client.get("/api/cameras/rack/snapshot.png")
     scaled = await client.get("/api/cameras/rack/snapshot.png?upscale=4")
 
@@ -496,6 +602,193 @@ async def test_out_of_range_emissivity_is_rejected(client: AsyncClient) -> None:
     response = await client.patch("/api/cameras/rack/parameters", json={"emissivity": 1.5})
 
     assert response.status_code == 422
+
+
+# --- lock-in ----------------------------------------------------------------
+
+
+async def start_run(client: AsyncClient, **body) -> dict:
+    request = {"frequency_hz": LOCKIN_FREQUENCY_HZ, "integration_s": 1.0, **body}
+    response = await client.post("/api/cameras/rack/lockin", json=request)
+
+    assert response.status_code == 202
+    return response.json()
+
+
+async def test_a_run_recovers_the_planted_amplitude(lockin_client: AsyncClient) -> None:
+    """The measurement end to end: plant a signal, ask for it back over HTTP."""
+    job = await start_run(lockin_client, integration_s=LOCKIN_INTEGRATION_S)
+    assert job["state"] == "running"
+    assert job["modulator"] == "external"
+
+    finished = await finished_job(lockin_client, job["id"])
+    assert finished["state"] == "succeeded", finished["error"]
+    assert finished["progress"] == 1.0
+    assert finished["frames"] > 20
+    assert finished["aliased"] is False
+    assert finished["samples_per_period"] > 10
+
+    arrays = await lockin_client.get(f"/api/jobs/{job['id']}/result.npz")
+    assert arrays.status_code == 200
+    assert int(arrays.headers["x-lockin-frames"]) == finished["frames"]
+
+    with np.load(io.BytesIO(arrays.content)) as loaded:
+        magnitude = np.hypot(loaded["in_phase"], loaded["quadrature"])
+
+    assert magnitude.shape == (192, 256)
+    assert float(np.median(magnitude)) == pytest.approx(LOCKIN_AMPLITUDE, rel=0.1)
+
+
+async def magnitude_of(client: AsyncClient, job_id: str) -> float:
+    response = await client.get(f"/api/jobs/{job_id}/result.npz")
+    assert response.status_code == 200
+
+    with np.load(io.BytesIO(response.content)) as loaded:
+        return float(np.median(np.hypot(loaded["in_phase"], loaded["quadrature"])))
+
+
+async def test_an_unmodulated_camera_reads_far_lower(lockin_client: AsyncClient) -> None:
+    """The discrimination the whole method rests on, measured rather than assumed."""
+    modulated_job = await start_run(lockin_client, integration_s=LOCKIN_INTEGRATION_S)
+    await finished_job(lockin_client, modulated_job["id"])
+
+    quiet = await lockin_client.post(
+        "/api/cameras/bench/lockin",
+        json={
+            "frequency_hz": LOCKIN_FREQUENCY_HZ,
+            "integration_s": LOCKIN_INTEGRATION_S,
+        },
+    )
+    assert quiet.status_code == 202
+    await finished_job(lockin_client, quiet.json()["id"])
+
+    driven = await magnitude_of(lockin_client, modulated_job["id"])
+    still = await magnitude_of(lockin_client, quiet.json()["id"])
+
+    assert still < driven / 10.0
+
+
+async def test_a_celsius_run_reports_degrees(lockin_client: AsyncClient) -> None:
+    """The same swing, demodulated through the calibration curve instead."""
+    job = await start_run(lockin_client, signal="celsius")
+    finished = await finished_job(lockin_client, job["id"])
+
+    assert finished["state"] == "succeeded", finished["error"]
+    assert finished["signal"] == "celsius"
+
+    # Degrees. The exact figure depends on the calibration curve across the
+    # swing, but it is nothing like the several thousand counts the raw run
+    # reports for the very same modulation.
+    magnitude = await magnitude_of(lockin_client, job["id"])
+    assert 0.0 < magnitude < LOCKIN_AMPLITUDE / 10.0
+
+
+@pytest.mark.parametrize("component", ["magnitude", "phase", "in_phase", "quadrature"])
+async def test_every_component_renders(lockin_client: AsyncClient, component: str) -> None:
+    job = await start_run(lockin_client, integration_s=0.3)
+    await finished_job(lockin_client, job["id"])
+
+    response = await lockin_client.get(
+        f"/api/jobs/{job['id']}/result.png?component={component}&colormap=turbo&upscale=2"
+    )
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"\x89PNG\r\n")
+    assert response.headers["x-lockin-component"] == component
+
+    image = cv2.imdecode(np.frombuffer(response.content, np.uint8), cv2.IMREAD_COLOR)
+    assert image.shape[:2] == (192 * 2, 256 * 2)
+
+
+async def test_an_unknown_component_is_rejected(lockin_client: AsyncClient) -> None:
+    job = await start_run(lockin_client, integration_s=0.3)
+    await finished_job(lockin_client, job["id"])
+
+    response = await lockin_client.get(f"/api/jobs/{job['id']}/result.png?component=sideways")
+
+    assert response.status_code == 422
+
+
+async def test_a_result_is_not_available_while_the_run_is_going(
+    lockin_client: AsyncClient,
+) -> None:
+    job = await start_run(lockin_client, integration_s=20.0)
+
+    response = await lockin_client.get(f"/api/jobs/{job['id']}/result.npz")
+
+    assert response.status_code == 409
+    assert "running" in response.json()["detail"]
+    await lockin_client.delete(f"/api/jobs/{job['id']}")
+
+
+async def test_a_second_run_on_one_camera_is_refused(lockin_client: AsyncClient) -> None:
+    """One load, one switch; two runs would drive it to opposite states."""
+    job = await start_run(lockin_client, integration_s=20.0)
+
+    response = await lockin_client.post(
+        "/api/cameras/rack/lockin", json={"frequency_hz": 2.0, "integration_s": 1.0}
+    )
+
+    assert response.status_code == 409
+    assert job["id"] in response.json()["detail"]
+    await lockin_client.delete(f"/api/jobs/{job['id']}")
+
+
+async def test_cancelling_a_run(lockin_client: AsyncClient) -> None:
+    job = await start_run(lockin_client, integration_s=30.0)
+
+    response = await lockin_client.delete(f"/api/jobs/{job['id']}")
+
+    assert response.status_code == 200
+    assert response.json()["state"] == "cancelled"
+    assert (await lockin_client.get(f"/api/jobs/{job['id']}/result.npz")).status_code == 422
+
+
+async def test_jobs_are_listed(lockin_client: AsyncClient) -> None:
+    job = await start_run(lockin_client, integration_s=0.3)
+    await finished_job(lockin_client, job["id"])
+
+    body = (await lockin_client.get("/api/jobs")).json()
+
+    assert [entry["id"] for entry in body] == [job["id"]]
+    assert body[0]["camera"] == "rack"
+
+
+async def test_an_unknown_job_is_a_404(lockin_client: AsyncClient) -> None:
+    response = await lockin_client.get("/api/jobs/nope")
+
+    assert response.status_code == 404
+    assert "nope" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"frequency_hz": 0.0, "integration_s": 1.0},
+        {"frequency_hz": 2.0, "integration_s": 0.0},
+        {"frequency_hz": 2.0, "integration_s": 1.0, "signal": "kelvin"},
+        {"frequency_hz": 2.0, "integration_s": 1.0, "port": "/dev/ttyUSB0"},
+    ],
+    ids=["zero-frequency", "zero-integration", "unknown-signal", "port-in-request"],
+)
+async def test_invalid_run_requests_are_rejected(lockin_client: AsyncClient, body: dict) -> None:
+    """The port case matters: the device comes from config, never from a caller."""
+    response = await lockin_client.post("/api/cameras/rack/lockin", json=body)
+
+    assert response.status_code == 422
+
+
+async def test_shutdown_cancels_a_run_in_flight(settings: Settings) -> None:
+    """A lock-in run must not outlive the app, nor hold the load on."""
+    manager = CameraManager(settings, {"rack": modulated, "bench": emulator()})
+    app = create_app(settings, manager)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http_client:
+        async with app.router.lifespan_context(app):
+            await manager.get("rack").wait_for_frame(timeout=5.0)
+            job = await start_run(http_client, integration_s=60.0)
+
+        assert app.state.jobs.get(job["id"]).state == "cancelled"
 
 
 # --- metrics ----------------------------------------------------------------

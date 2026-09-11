@@ -55,6 +55,19 @@ auto_detect = true
 colormap = "jet"
 
 
+# --- A camera set up for lock-in thermography -------------------------------
+# The serial port lives here rather than in the API request, so that starting a
+# run cannot be used to make the server open an arbitrary device. Leave
+# lockin_port out when something else drives the load; the demodulation still
+# runs, and the job reports its modulator as "external".
+# [[cameras]]
+# id = "die"
+# device = "/dev/video2"
+# lockin_port = "/dev/ttyUSB0"   # load switch: writes "1\n" on, "0\n" off
+# lockin_baudrate = 115200
+# lockin_invert = false          # true for a load wired active-low
+
+
 # --- Replaying a capture instead of opening hardware ------------------------
 # [[cameras]]
 # id = "replay"

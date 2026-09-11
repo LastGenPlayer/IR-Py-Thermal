@@ -12,6 +12,7 @@ from irthermal.camera.manager import CameraManager, UnknownCameraError
 from irthermal.camera.runtime import CameraRuntime
 from irthermal.config import Settings
 from irthermal.core.frame import Frame
+from irthermal.jobs import JobStore, LockInJob, UnknownJobError
 
 FIRST_FRAME_TIMEOUT_S = 10.0
 
@@ -30,6 +31,12 @@ def get_settings(request: Request) -> Settings:
     """The application's settings."""
     settings: Settings = request.app.state.settings
     return settings
+
+
+def get_jobs(request: Request) -> JobStore:
+    """The application's lock-in job store."""
+    jobs: JobStore = request.app.state.jobs
+    return jobs
 
 
 def get_camera(
@@ -60,10 +67,23 @@ def get_camera_socket(
         ) from None
 
 
+def get_job(
+    job_id: Annotated[str, Path(description="Lock-in job id.")],
+    jobs: Annotated[JobStore, Depends(get_jobs)],
+) -> LockInJob:
+    """Resolve a job id, or 404."""
+    try:
+        return jobs.get(job_id)
+    except UnknownJobError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc).strip("'")) from None
+
+
 Camera = Annotated[CameraRuntime, Depends(get_camera)]
 SocketCamera = Annotated[CameraRuntime, Depends(get_camera_socket)]
 Manager = Annotated[CameraManager, Depends(get_manager)]
 AppSettings = Annotated[Settings, Depends(get_settings)]
+Jobs = Annotated[JobStore, Depends(get_jobs)]
+Job = Annotated[LockInJob, Depends(get_job)]
 
 
 async def get_frame(camera: Camera) -> Frame:

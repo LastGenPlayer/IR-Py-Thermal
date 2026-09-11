@@ -17,6 +17,7 @@ from irthermal.camera.runtime import CameraStatus
 from irthermal.core.frame import Frame, Measurement, RegionStats
 from irthermal.core.radiometry import RadiometryAdjustments
 from irthermal.core.telemetry import CameraTelemetry
+from irthermal.jobs import JobState, LockInJob, SignalDomain
 
 
 def celsius(value: float) -> float | None:
@@ -256,6 +257,71 @@ class ParametersRequest(BaseModel):
         if not self.device_parameters() and self.temperature_offset is None:
             raise ValueError("no parameters given")
         return self
+
+
+class LockInRequest(BaseModel):
+    """A lock-in run to start.
+
+    The serial port is deliberately absent: it comes from the camera's
+    configuration, so the API cannot be used to open an arbitrary device on the
+    host. See `CameraConfig.lockin_port`.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    frequency_hz: float = Field(gt=0.0, le=100.0)
+    """Modulation frequency. Must be below half the camera's frame rate."""
+
+    integration_s: float = Field(gt=0.0, le=3600.0)
+    """How long to integrate. A whole number of periods cancels the background."""
+
+    signal: SignalDomain = "raw"
+    """`raw` gives an amplitude in sensor counts, as v1 did; `celsius` in degrees."""
+
+
+class LockInJobOut(BaseModel):
+    """A run's progress, and its shape once it has one."""
+
+    id: str
+    camera: str
+    state: JobState
+    frequency_hz: float
+    integration_s: float
+    signal: SignalDomain
+    modulator: str
+    created_at: float
+    frames: int
+    elapsed_s: float
+    progress: float
+    error: str | None = None
+    periods: float | None = None
+    samples_per_period: float | None = None
+    aliased: bool | None = None
+    """True when the frame rate did not cover the modulation frequency."""
+
+    @classmethod
+    def of(cls, job: LockInJob) -> Self:
+        out = cls(
+            id=job.id,
+            camera=job.camera_id,
+            state=job.state,
+            frequency_hz=job.frequency_hz,
+            integration_s=job.integration_s,
+            signal=job.signal,
+            modulator=job.modulator,
+            created_at=job.created_at,
+            frames=job.frames,
+            elapsed_s=round(job.elapsed_s, 3),
+            progress=round(job.progress, 4),
+            error=job.error,
+        )
+
+        if job.result is not None:
+            out.periods = round(job.result.periods, 3)
+            out.samples_per_period = round(job.result.samples_per_period, 2)
+            out.aliased = job.result.samples_per_period < 2.0
+
+        return out
 
 
 class HealthOut(BaseModel):

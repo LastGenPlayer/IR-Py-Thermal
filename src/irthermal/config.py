@@ -72,6 +72,20 @@ class CameraConfig(BaseModel):
 
     points: list[PointConfig] = Field(default_factory=list)
 
+    lockin_port: str | None = None
+    """Serial port switching the load for lock-in runs, e.g. `/dev/ttyUSB0`.
+
+    Deliberately configuration rather than a request field. The API would
+    otherwise let anyone who can reach it name a device path for the server to
+    open and write to, which is a much larger thing to expose than a thermal
+    camera. Omit it when the load is driven by something else; the demodulation
+    runs either way.
+    """
+
+    lockin_baudrate: int = Field(default=115200, ge=300)
+    lockin_invert: bool = False
+    """Swap the on and off symbols, for a load wired active-low."""
+
     @field_validator("colormap")
     @classmethod
     def _check_colormap(cls, value: str) -> str:

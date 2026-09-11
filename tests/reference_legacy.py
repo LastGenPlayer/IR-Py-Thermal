@@ -247,3 +247,36 @@ def legacy_float_command(position: int, value: float) -> list[int]:
 def legacy_ushort_command(position: int, value: int) -> list[int]:
     bytes_ = np.array([value], dtype=np.uint16).view(np.uint8)
     return [((position + i) << 8) | (0xFF & int(byte)) for i, byte in enumerate(bytes_)]
+
+
+def legacy_lockin(
+    frames: list[np.ndarray],
+    times: list[float],
+    freq: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """The demodulation kernel out of v1's `pyplot.get_lockin_frame`.
+
+    Only the kernel: the original interleaved serial writes, wall-clock waits
+    and a camera read into the same loop, none of which can be replayed. The
+    arithmetic is verbatim -- the weights, the float64 accumulators and the
+    division by the frame count -- which is what parity has to mean here.
+    """
+    in_phase_sum = np.zeros(frames[0].shape)
+    quadrature_sum = np.zeros(frames[0].shape)
+    total_frames = 0
+
+    for raw_frame, current_time in zip(frames, times, strict=True):
+        total_frames += 1
+
+        phase = 2 * math.pi * freq * current_time
+        sin_weight = 2 * math.sin(phase)
+        cos_weight = -2 * math.cos(phase)
+
+        in_phase_sum += raw_frame * sin_weight
+        quadrature_sum += raw_frame * cos_weight
+
+    if total_frames > 0:
+        in_phase_sum /= total_frames
+        quadrature_sum /= total_frames
+
+    return in_phase_sum, quadrature_sum
