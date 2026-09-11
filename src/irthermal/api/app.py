@@ -12,7 +12,7 @@ to proxy and one thing to firewall.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -45,7 +45,7 @@ def create_app(
     camera_manager = manager if manager is not None else CameraManager(settings)
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
         log.info("server.starting", cameras=camera_manager.ids)
         await camera_manager.start()
         try:

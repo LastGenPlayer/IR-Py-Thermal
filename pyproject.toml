@@ -80,6 +80,8 @@ packages = ["irthermal"]
 mypy_path = "src"
 strict = true
 warn_unreachable = true
+# PEP 702: fail on calls into APIs their own authors marked deprecated.
+enable_error_code = ["deprecated"]
 
 [[tool.mypy.overrides]]
 module = ["cv2.*", "serial.*"]

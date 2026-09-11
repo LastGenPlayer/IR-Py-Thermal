@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import io
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 
 import numpy as np
@@ -86,7 +86,7 @@ async def degraded_client(settings: Settings) -> AsyncIterator[AsyncClient]:
 
 
 @asynccontextmanager
-async def running_server(settings: Settings) -> AsyncIterator[str]:
+async def running_server(settings: Settings) -> AsyncGenerator[str, None]:
     """A real uvicorn server on an ephemeral port, for as long as the block runs.
 
     Two reasons this is a context manager used inside the test rather than a
