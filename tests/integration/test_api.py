@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
@@ -11,6 +12,8 @@ from contextlib import asynccontextmanager
 import numpy as np
 import pytest
 from httpx import ASGITransport, AsyncClient
+from websockets.asyncio.client import connect as websocket_connect
+from websockets.exceptions import InvalidStatus
 
 from conftest import FrameSpec, build_capture
 from irthermal.api import create_app
@@ -348,6 +351,98 @@ async def test_zero_area_region_is_rejected(client: AsyncClient) -> None:
     )
 
     assert response.status_code == 422
+
+
+# --- telemetry socket -------------------------------------------------------
+#
+# Over a real socket rather than Starlette's TestClient, which now wants a
+# different HTTP library than the rest of this suite uses. The same reasoning as
+# the MJPEG tests: a streaming protocol is worth exercising as one.
+
+
+def socket_url(base_url: str, path: str) -> str:
+    return base_url.replace("http://", "ws://", 1) + path
+
+
+async def test_telemetry_socket_pushes_measurements(settings: Settings) -> None:
+    async with (
+        running_server(settings) as base_url,
+        websocket_connect(socket_url(base_url, "/api/cameras/rack/telemetry?fps=30")) as socket,
+    ):
+        message = json.loads(await socket.recv())
+
+    assert message["camera"] == "rack"
+    assert set(message["points"]) == {"hiend-1", "ind-1"}
+    assert message["points"]["hiend-1"]["x"] == 43
+    assert message["minimum"]["celsius"] <= message["maximum"]["celsius"]
+    assert message["telemetry"]["serial"] == "SN0042"
+    assert message["adjustments"]["user_offset"] == 0.0
+
+
+async def test_telemetry_socket_keeps_pushing(settings: Settings) -> None:
+    """Each message must be a new frame, not the same one repeated."""
+    async with (
+        running_server(settings) as base_url,
+        websocket_connect(socket_url(base_url, "/api/cameras/rack/telemetry?fps=30")) as socket,
+    ):
+        first = json.loads(await socket.recv())
+        second = json.loads(await socket.recv())
+
+    assert second["sequence"] > first["sequence"]
+    assert second["captured_at"] >= first["captured_at"]
+
+
+async def test_telemetry_socket_rejects_an_unknown_camera(settings: Settings) -> None:
+    async with running_server(settings) as base_url:
+        with pytest.raises(InvalidStatus):
+            async with websocket_connect(socket_url(base_url, "/api/cameras/nope/telemetry")):
+                pass  # pragma: no cover - the handshake never completes
+
+
+async def test_telemetry_socket_unsubscribes_on_disconnect(settings: Settings) -> None:
+    """A closed socket must not leave a subscriber attached to the hub."""
+    async with running_server(settings) as base_url, AsyncClient(base_url=base_url) as client:
+        async with websocket_connect(
+            socket_url(base_url, "/api/cameras/rack/telemetry?fps=30")
+        ) as socket:
+            await socket.recv()
+            assert (await client.get("/api/cameras/rack")).json()["subscribers"] == 1
+
+        for _ in range(100):
+            if (await client.get("/api/cameras/rack")).json()["subscribers"] == 0:
+                break
+            await asyncio.sleep(0.02)
+        else:  # pragma: no cover
+            pytest.fail("the subscription outlived the socket")
+
+
+# --- web ui -----------------------------------------------------------------
+
+
+async def test_web_ui_is_served_at_the_root(client: AsyncClient) -> None:
+    response = await client.get("/")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "IRThermal" in response.text
+
+
+async def test_web_ui_assets_are_served(client: AsyncClient) -> None:
+    script = await client.get("/app.js")
+    stylesheet = await client.get("/style.css")
+
+    assert "stream.mjpg" in script.text
+    assert "#stream" in stylesheet.text
+
+
+async def test_docs_survive_the_static_mount(client: AsyncClient) -> None:
+    """The mount answers for `/`, so the routes registered before it must win."""
+    assert (await client.get("/docs")).status_code == 200
+    assert (await client.get("/metrics")).status_code == 200
+
+
+async def test_unknown_page_is_a_404(client: AsyncClient) -> None:
+    assert (await client.get("/nope.html")).status_code == 404
 
 
 # --- control ----------------------------------------------------------------

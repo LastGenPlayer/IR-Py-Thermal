@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Path, Request, status
+from fastapi import Depends, HTTPException, Path, Request, WebSocketException, status
+from starlette.requests import HTTPConnection
 
 from irthermal.camera.base import CameraError
 from irthermal.camera.manager import CameraManager, UnknownCameraError
@@ -15,9 +16,13 @@ from irthermal.core.frame import Frame
 FIRST_FRAME_TIMEOUT_S = 10.0
 
 
-def get_manager(request: Request) -> CameraManager:
-    """The application's camera manager."""
-    manager: CameraManager = request.app.state.manager
+def get_manager(connection: HTTPConnection) -> CameraManager:
+    """The application's camera manager.
+
+    Typed as `HTTPConnection` rather than `Request` so that WebSocket routes can
+    depend on it too -- a socket has no `Request`.
+    """
+    manager: CameraManager = connection.app.state.manager
     return manager
 
 
@@ -38,7 +43,25 @@ def get_camera(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc).strip("'")) from None
 
 
+def get_camera_socket(
+    camera_id: Annotated[str, Path(description="Configured camera id.")],
+    manager: Annotated[CameraManager, Depends(get_manager)],
+) -> CameraRuntime:
+    """Resolve a camera id for a WebSocket route.
+
+    The same lookup as `get_camera`, but an HTTP status has nowhere to go on a
+    socket: the client gets a close frame carrying the reason instead.
+    """
+    try:
+        return manager.get(camera_id)
+    except UnknownCameraError as exc:
+        raise WebSocketException(
+            code=status.WS_1008_POLICY_VIOLATION, reason=str(exc).strip("'")
+        ) from None
+
+
 Camera = Annotated[CameraRuntime, Depends(get_camera)]
+SocketCamera = Annotated[CameraRuntime, Depends(get_camera_socket)]
 Manager = Annotated[CameraManager, Depends(get_manager)]
 AppSettings = Annotated[Settings, Depends(get_settings)]
 

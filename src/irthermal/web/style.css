@@ -1,0 +1,197 @@
+/* Dark by default: this gets looked at next to a thermal image, usually in a
+   rack room, and a white page next to an inferno palette is punishing. */
+
+:root {
+  --bg: #14161a;
+  --panel: #1d2027;
+  --line: #2c313b;
+  --text: #e6e8ec;
+  --muted: #9aa3b2;
+  --accent: #ff8c42;
+  --ok: #4ac97e;
+  --bad: #e5534b;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0 16px 32px;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  padding-block: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+h1 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.spacer { flex: 1; }
+
+.badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.badge.live { color: var(--ok); border-color: var(--ok); }
+.badge.offline { color: var(--bad); border-color: var(--bad); }
+
+.error {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--bad);
+  border-radius: 6px;
+  color: var(--bad);
+  background: rgba(229, 83, 75, 0.08);
+}
+
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+.viewer {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+
+#stream {
+  max-width: 100%;
+  /* Nearest-neighbour: an upscaled thermal frame should show its real pixels
+     rather than a browser's guess at what is between them. */
+  image-rendering: pixelated;
+  background: #000;
+  border-radius: 4px;
+}
+
+.caption {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.panel, .panel-form { display: grid; gap: 12px; }
+
+fieldset {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+label.inline, label.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+select, input[type="number"], button {
+  padding: 6px 8px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font: inherit;
+}
+
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+input:disabled { opacity: 0.45; }
+
+button {
+  cursor: pointer;
+  font-weight: 600;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+button:hover { background: var(--accent); color: var(--bg); }
+button:disabled { cursor: progress; opacity: 0.5; }
+
+output { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.readings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+
+th, td {
+  padding: 5px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--line);
+}
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+tr.derived td { color: var(--muted); }
+
+dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 16px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+dt { color: var(--muted); }
+dd { margin: 0; text-align: right; }
+
+@media (max-width: 860px) {
+  main, .readings { grid-template-columns: minmax(0, 1fr); }
+}

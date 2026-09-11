@@ -8,6 +8,8 @@ deal -- a stream you can inspect with curl is a stream you can diagnose.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import io
 import time
 from collections.abc import AsyncIterator, Awaitable
@@ -15,10 +17,19 @@ from dataclasses import asdict
 from typing import Annotated, Literal
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from fastapi.responses import StreamingResponse
 
-from irthermal.api.deps import Camera, CurrentFrame, Manager
+from irthermal.api.deps import Camera, CurrentFrame, Manager, SocketCamera
 from irthermal.api.schemas import (
     AdjustmentsOut,
     CameraDetailOut,
@@ -29,6 +40,7 @@ from irthermal.api.schemas import (
     RangeRequest,
     RegionRequest,
     RegionStatsOut,
+    TelemetryFrameOut,
     TelemetryOut,
     TemperaturesOut,
     celsius,
@@ -43,6 +55,7 @@ router = APIRouter()
 
 MJPEG_BOUNDARY = "frame"
 MAX_UPSCALE = 8
+DEFAULT_TELEMETRY_FPS = 4.0
 
 
 async def _guard(operation: Awaitable[None]) -> None:
@@ -260,6 +273,63 @@ async def region(frame: CurrentFrame, body: RegionRequest) -> RegionStatsOut:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
 
     return RegionStatsOut.of(stats)
+
+
+# --- telemetry socket -------------------------------------------------------
+
+
+async def _await_disconnect(websocket: WebSocket) -> None:
+    """Return once the client goes away.
+
+    A socket nobody reads from never learns that the peer has gone: the
+    disconnect arrives on the receive channel, and if nothing is listening there
+    the push loop keeps writing into a dead connection.
+    """
+    with contextlib.suppress(WebSocketDisconnect):
+        while True:
+            await websocket.receive()
+
+
+@router.websocket("/cameras/{camera_id}/telemetry")
+async def telemetry_socket(
+    websocket: WebSocket,
+    camera: SocketCamera,
+    fps: Annotated[float, Query(gt=0, le=30)] = DEFAULT_TELEMETRY_FPS,
+) -> None:
+    """Push a measurement summary for each frame.
+
+    The companion to the MJPEG stream: the video carries the picture, this
+    carries the numbers over it. Sending them together in one encoded image
+    would mean re-encoding per viewer and leave the readings unparseable.
+    """
+    await websocket.accept()
+    disconnected = asyncio.create_task(_await_disconnect(websocket))
+    interval = 1.0 / fps
+    sent_at = 0.0
+
+    try:
+        async with camera.subscribe() as subscription:
+            async for frame in subscription:
+                if disconnected.done():
+                    break
+
+                now = time.monotonic()
+                if now - sent_at < interval:
+                    continue
+                sent_at = now
+
+                points = frame.measure((p.name, p.x, p.y) for p in camera.config.points)
+                message = TelemetryFrameOut.of(
+                    frame,
+                    points,
+                    fps=camera.status().fps,
+                    adjustments=camera.adjustments,
+                )
+                await websocket.send_text(message.model_dump_json())
+    except WebSocketDisconnect:
+        pass
+    finally:
+        disconnected.cancel()
 
 
 # --- control ----------------------------------------------------------------

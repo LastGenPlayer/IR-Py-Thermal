@@ -159,6 +159,53 @@ class TemperaturesOut(BaseModel):
         )
 
 
+class TelemetryFrameOut(BaseModel):
+    """One frame's whole measurement picture, as pushed over the telemetry socket.
+
+    Flat and self-contained on purpose: a client that has this message needs no
+    follow-up request to label the reading, place it in time or know what the
+    camera thought the conditions were.
+    """
+
+    camera: str
+    sequence: int
+    captured_at: float
+    fps: float
+    corrected: bool
+    points: dict[str, MeasurementOut]
+    minimum: MeasurementOut
+    maximum: MeasurementOut
+    mean_celsius: float | None
+    center: MeasurementOut
+    telemetry: TelemetryOut
+    adjustments: AdjustmentsOut
+
+    @classmethod
+    def of(
+        cls,
+        frame: Frame,
+        points: dict[str, Measurement],
+        *,
+        fps: float,
+        adjustments: RadiometryAdjustments,
+    ) -> Self:
+        stats = frame.stats()
+        return cls(
+            camera=frame.camera_id,
+            sequence=frame.sequence,
+            captured_at=frame.captured_at,
+            fps=fps,
+            corrected=frame.corrected,
+            points={name: MeasurementOut.of(m) for name, m in points.items()},
+            minimum=MeasurementOut.of(stats.minimum),
+            maximum=MeasurementOut.of(stats.maximum),
+            mean_celsius=celsius(stats.mean_celsius),
+            center=MeasurementOut.of(frame.center()),
+            telemetry=TelemetryOut.of(frame.telemetry),
+            adjustments=AdjustmentsOut.of(adjustments),
+        )
+
+
 class RegionRequest(BaseModel):
     """A rectangle to summarise. `x2`/`y2` are exclusive."""
 

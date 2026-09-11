@@ -7,16 +7,19 @@ uvicorn workers would each open the same device.
 
 Metrics are served from this same app rather than a second HTTP server on
 another port, which is what v1 did. One port is one thing to expose, one thing
-to proxy and one thing to firewall.
+to proxy and one thing to firewall. The web UI is served here for the same
+reason, and because it talks to this API over relative paths.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 from prometheus_client.registry import Collector
 
@@ -29,6 +32,7 @@ from irthermal.metrics import CameraCollector
 log = get_logger(__name__)
 
 API_PREFIX = "/api"
+WEB_ROOT = Path(__file__).resolve().parent.parent / "web"
 
 
 def create_app(
@@ -84,9 +88,9 @@ def create_app(
         """Convenience alias; the canonical path is under the API prefix."""
         return RedirectResponse(f"{API_PREFIX}/health")
 
-    @app.get("/", include_in_schema=False)
-    async def index() -> RedirectResponse:
-        """Until the web UI lands, send people somewhere useful."""
-        return RedirectResponse("/docs")
+    # Last, because it answers for every path the routes above did not claim.
+    # The docs and OpenAPI routes are registered by FastAPI itself during
+    # construction, so they are matched before this and keep working.
+    app.mount("/", StaticFiles(directory=WEB_ROOT, html=True), name="web")
 
     return app
