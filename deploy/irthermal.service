@@ -1,0 +1,68 @@
+# Run IRThermal as a system service, without a container.
+#
+#   sudo useradd --system --no-create-home --groups video,dialout irthermal
+#   sudo python3 -m venv /opt/irthermal
+#   sudo /opt/irthermal/bin/pip install irthermal
+#   sudo install -Dm644 config.example.toml /etc/irthermal/config.toml
+#   sudo install -Dm644 deploy/irthermal.service /etc/systemd/system/irthermal.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now irthermal
+#
+# Check it with `systemd-analyze verify irthermal.service` and
+# `systemd-analyze security irthermal.service` before relying on it.
+
+[Unit]
+Description=IRThermal thermal camera server
+Documentation=https://github.com/diminDDL/IR-Py-Thermal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+ExecStart=/opt/irthermal/bin/irthermal serve --config /etc/irthermal/config.toml
+ExecReload=/bin/kill -HUP $MAINPID
+
+# A camera that is unplugged and replugged comes back through the reader's own
+# reconnect loop, so restarts here are for the process actually dying.
+Restart=on-failure
+RestartSec=5s
+
+User=irthermal
+Group=irthermal
+# video owns /dev/video*; dialout owns the serial port a lock-in run switches
+# its load through. Drop dialout if no camera has a `lockin_port`.
+SupplementaryGroups=video dialout
+
+# The service reads two kinds of device and one config file, listens on a TCP
+# port, and writes nothing.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateMounts=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Only the devices it actually uses. `char-video4linux` covers /dev/video*;
+# name the serial port explicitly, or drop the line if there is no load switch.
+DevicePolicy=closed
+DeviceAllow=char-video4linux rw
+DeviceAllow=/dev/ttyUSB0 rw
+
+# NumPy and OpenCV ship their own BLAS, which maps writable-executable pages on
+# some builds. MemoryDenyWriteExecute=true is therefore deliberately not set.
+
+[Install]
+WantedBy=multi-user.target
