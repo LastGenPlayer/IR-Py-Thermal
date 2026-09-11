@@ -12,36 +12,34 @@ or pure `opencv` - much faster but without most features
 
 Upon startup the app automatically looks for supported cameras by matching the resolutions.
 
+> ### v2 rewrite in progress
+>
+> A rewrite is underway on the `feature/v2` branch: a headless server with an
+> HTTP API, MJPEG streaming, multi-camera support and configurable Prometheus
+> metrics, replacing the desktop viewers documented below.
+>
+> Build tooling has already moved from Poetry to a PEP 621 `pyproject.toml`, so
+> the Poetry instructions that used to be here no longer apply. The scripts
+> below still work; install their dependencies directly:
+>
+> ```bash
+> pip install opencv-python matplotlib pyserial prometheus-client
+> ```
+>
+> To work on v2 instead:
+>
+> ```bash
+> uv sync --extra dev     # or: pip install -e ".[dev]"
+> pytest tests -q
+> irthermal check-config -c config.example.toml
+> ```
+>
+> Everything below documents the v1 scripts and will be rewritten when the v2
+> server reaches feature parity.
+
 ## Installation
 
-### Using Poetry
-
-This project uses [Poetry](https://python-poetry.org/) for dependency management. To install dependencies:
-
-```bash
-# Install Poetry if you don't have it
-curl -sSL https://install.python-poetry.org | python3 -
-
-# Install all dependencies
-poetry install
-
-# Run the program
-poetry run python pyplot.py
-```
-
-To add new dependencies:
-```bash
-poetry add package_name
-```
-
-To add development dependencies:
-```bash
-poetry add --group dev package_name
-```
-
-### Manual Installation
-
-If you prefer not to use Poetry, install dependencies directly:
+Install the dependencies for the scripts documented below:
 ```bash
 pip install opencv-python matplotlib pyserial prometheus-client
 ```
