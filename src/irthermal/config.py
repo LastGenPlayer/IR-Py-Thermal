@@ -15,13 +15,15 @@ from collections import Counter
 from pathlib import Path
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
     TomlConfigSettingsSource,
 )
+
+from irthermal.core.render import COLORMAPS, DEFAULT_COLORMAP
 
 DEFAULT_CONFIG_PATH = Path("/etc/irthermal/config.toml")
 
@@ -64,11 +66,19 @@ class CameraConfig(BaseModel):
     temperature_offset: float = 0.0
     """Constant offset added to every temperature, in Celsius."""
 
-    colormap: str = "inferno"
+    colormap: str = DEFAULT_COLORMAP
     emissivity: float | None = Field(default=None, gt=0.0, le=1.0)
     """Pushed to the camera on connect. Omit to keep whatever it has stored."""
 
     points: list[PointConfig] = Field(default_factory=list)
+
+    @field_validator("colormap")
+    @classmethod
+    def _check_colormap(cls, value: str) -> str:
+        if value not in COLORMAPS:
+            msg = f"unknown colormap {value!r}; available: {', '.join(sorted(COLORMAPS))}"
+            raise ValueError(msg)
+        return value
 
     @model_validator(mode="after")
     def _check_source(self) -> Self:

@@ -24,6 +24,7 @@ from irthermal.core.radiometry import (
     NORMAL_RANGE_MODE,
     RadiometryAdjustments,
 )
+from irthermal.core.render import RenderOptions, encode_jpeg, encode_png, render
 from irthermal.core.resolutions import ResolutionParams
 from irthermal.hub import FrameHub, Subscription
 from irthermal.logging import get_logger
@@ -89,6 +90,11 @@ class CameraRuntime:
         self._factory = factory or build_source_factory(config)
         self._hub: FrameHub | None = None
         self._reader: FrameReader | None = None
+
+        # One encode per frame, shared by every viewer. Only ever touched from
+        # the event loop, so no lock is needed.
+        self._render_key: tuple[object, ...] | None = None
+        self._render_value: bytes = b""
 
     # --- lifecycle ----------------------------------------------------------
 
@@ -258,6 +264,37 @@ class CameraRuntime:
         if self._reader is None:
             raise RuntimeError(f"camera {self.config.id} is not started")
         self._reader.adjustments = replace(self._reader.adjustments, user_offset=celsius)
+
+    # --- rendering ----------------------------------------------------------
+
+    def default_render_options(self) -> RenderOptions:
+        """Render settings from this camera's configuration."""
+        return RenderOptions(colormap=self.config.colormap)
+
+    def encode_frame(
+        self,
+        frame: Frame,
+        options: RenderOptions,
+        *,
+        fmt: str = "jpeg",
+        quality: int = 85,
+    ) -> bytes:
+        """Render and encode a frame, reusing the result across viewers.
+
+        Ten browsers watching one camera should cost one encode per frame, not
+        ten, so the most recent result is kept and returned to anyone asking for
+        the same frame with the same settings.
+        """
+        key = (frame.sequence, options, fmt, quality)
+        if self._render_key == key:
+            return self._render_value
+
+        image = render(frame, options)
+        encoded = encode_jpeg(image, quality) if fmt == "jpeg" else encode_png(image)
+
+        self._render_key = key
+        self._render_value = encoded
+        return encoded
 
     # --- measurement --------------------------------------------------------
 
