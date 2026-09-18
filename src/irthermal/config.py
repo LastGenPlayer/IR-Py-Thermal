@@ -60,8 +60,30 @@ class CameraConfig(BaseModel):
     auto_detect: bool = False
     """Scan for a supported camera when no device path is given."""
 
+    transport: Literal["auto", "v4l2", "ffmpeg"] = "auto"
+    """How to reach the camera.
+
+    `auto` prefers V4L2 on Linux and falls back to ffmpeg; everywhere else it
+    goes straight to ffmpeg, because OpenCV's Windows and macOS backends decode
+    the sensor's 16-bit words to BGR before the driver can read them.
+
+    Only a V4L2 handle carries the camera's control channel, so calibration,
+    range switching and parameter writes need `v4l2`. Streaming and measurement
+    work on either.
+    """
+
     raw_mode: bool = False
     """Camera streams unprocessed sensor data; do the correction in software."""
+
+    calibration_file: Path | None = None
+    """Where to keep this camera's flat-field reference between runs.
+
+    Only meaningful with `raw_mode`. A camera reached over a transport with no
+    control channel cannot have its shutter closed, so its reference has to be
+    taken by hand -- cover the lens, POST /calibrate -- and without somewhere to
+    store it that would be true after every restart. Saved on calibration,
+    reloaded on connect, ignored if it does not match the sensor.
+    """
 
     temperature_offset: float = 0.0
     """Constant offset added to every temperature, in Celsius."""

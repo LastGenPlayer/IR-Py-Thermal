@@ -97,6 +97,11 @@ class EmulatorSource:
     def description(self) -> str:
         return f"emulator({self._description})"
 
+    @property
+    def supports_control(self) -> bool:
+        """True: commands go nowhere, but they are recorded rather than refused."""
+        return True
+
     def read_words(self) -> FrameWords:
         """Return the capture, pacing to the configured frame rate."""
         if self._closed:

@@ -1,0 +1,1936 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "IRThermal",
+    "summary": "Thermal camera streaming, measurement and metrics.",
+    "version": "2.0.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Health",
+        "description": "Liveness: the process is up and serving.",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ready": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Ready",
+        "description": "Readiness: every camera is connected.\n\nDeliberately separate from liveness. A camera being unplugged should not\nmake an orchestrator restart a process that is otherwise working fine.",
+        "operationId": "ready_api_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/colormaps": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Colormaps",
+        "description": "Palettes accepted by the rendering endpoints.",
+        "operationId": "colormaps_api_colormaps_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "title": "Response Colormaps Api Colormaps Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cameras": {
+      "get": {
+        "tags": [
+          "cameras"
+        ],
+        "summary": "List Cameras",
+        "description": "Every configured camera and its capture health.",
+        "operationId": "list_cameras_api_cameras_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CameraStatusOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Cameras Api Cameras Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cameras/{camera_id}": {
+      "get": {
+        "tags": [
+          "cameras"
+        ],
+        "summary": "Get Camera Detail",
+        "description": "One camera, including whatever its latest frame reported.",
+        "operationId": "get_camera_detail_api_cameras__camera_id__get",
+        "parameters": [
+          {
+            "name": "camera_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Configured camera id.",
+              "title": "Camera Id"
+            },
+            "description": "Configured camera id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cameras/{camera_id}/stream.mjpg": {
+      "get": {
+        "tags": [
+          "imagery"
+        ],
+        "summary": "Stream",
+        "description": "Live MJPEG. Drop it straight into an `<img src=...>`.",
+        "operationId": "stream_api_cameras__camera_id__stream_mjpg_get",
+        "parameters": [
+          {
+            "name": "camera_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Configured camera id.",
+              "title": "Camera Id"
+            },
+            "description": "Configured camera id."
+          },
+          {
+            "name": "fps",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 60,
+              "exclusiveMinimum": 0,
+              "description": "Cap the delivered rate.",
+              "default": 25.0,
+              "title": "Fps"
+            },
+            "description": "Cap the delivered rate."
+          },
+          {
+            "name": "quality",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 85,
+              "title": "Quality"
+            }
+          },
+          {
+            "name": "colormap",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Palette name.",
+              "title": "Colormap"
+            },
+            "description": "Palette name."
+          },
+          {
+            "name": "min_celsius",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Low end of the scale.",
+              "title": "Min Celsius"
+            },
+            "description": "Low end of the scale."
+          },
+          {
+            "name": "max_celsius",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "High end of the scale.",
+              "title": "Max Celsius"
+            },
+            "description": "High end of the scale."
+          },
+          {
+            "name": "equalize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Equalise the histogram.",
+              "default": false,
+              "title": "Equalize"
+            },
+            "description": "Equalise the histogram."
+          },
+          {
+            "name": "upscale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 8,
+              "minimum": 1,
+              "default": 1,
+              "title": "Upscale"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cameras/{camera_id}/snapshot.{fmt}": {
+      "get": {
+        "tags": [
+          "imagery"
+        ],
+        "summary": "Snapshot",
+        "description": "A single rendered frame.",
+        "operationId": "snapshot_api_cameras__camera_id__snapshot__fmt__get",
+        "parameters": [
+          {
+            "name": "fmt",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "jpg",
+                "jpeg",
+                "png"
+              ],
+              "type": "string",
+              "title": "Fmt"
+            }
+          },
+          {
+            "name": "camera_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Configured camera id.",
+              "title": "Camera Id"
+            },
+            "description": "Configured camera id."
+          },
+          {
+            "name": "quality",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 85,
+              "title": "Quality"
+            }
+          },
+          {
+            "name": "colormap",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Palette name.",
+              "title": "Colormap"
+            },
+            "description": "Palette name."
+          },
+          {
+            "name": "min_celsius",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Low end of the scale.",
+              "title": "Min Celsius"
+            },
+            "description": "Low end of the scale."
+          },
+          {
+            "name": "max_celsius",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "High end of the scale.",
+              "title": "Max Celsius"
+            },
+            "description": "High end of the scale."
+          },
+          {
+            "name": "equalize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Equalise the histogram.",
+              "default": false,
+              "title": "Equalize"
+            },
+            "description": "Equalise the histogram."
+          },
+          {
+            "name": "upscale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 8,
+              "minimum": 1,
+              "default": 1,
+              "title": "Upscale"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cameras/{camera_id}/frame.npy": {
+      "get": {
+        "tags": [
+          "imagery"
+        ],
+        "summary": "Raw Frame",
+        "description": "The uncompressed 16-bit pixels, for analysis rather than viewing.\n\nReadable with `numpy.load`, and the same shape v1 wrote with its `r` key.",
+        "operationId": "raw_frame_api_cameras__camera_id__frame_npy_get",
+        "parameters": [
+          {
+            "name": "camera_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Configured camera id.",
+              "title": "Camera Id"
+            },
+            "description": "Configured camera id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cameras/{camera_id}/temperatures": {
+      "get": {
+        "tags": [
+          "measurement"
+        ],
+        "summary": "Temperatures",
+        "description": "Configured points, plus the frame's own extremes.",
+        "operationId": "temperatures_api_cameras__camera_id__temperatures_get",
+        "parameters": [
+          {
+            "name": "camera_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Configured camera id.",
+              "title": "Camera Id"
+            },
+            "description": "Configured camera id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemperaturesOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cameras/{camera_id}/temperature": {
+      "get": {
+        "tags": [
+          "measurement"
+        ],
+        "summary": "Temperature At",
+        "description": "Temperature at one pixel.",
+        "operationId": "temperature_at_api_cameras__camera_id__temperature_get",
+        "parameters": [
+          {
+            "name": "camera_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Configured camera id.",
+              "title": "Camera Id"
+            },
+            "description": "Configured camera id."
+          },
+          {
+            "name": "x",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "title": "X"
+            }
+          },
+          {
+            "name": "y",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "title": "Y"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeasurementOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cameras/{camera_id}/region": {
+      "post": {
+        "tags": [
+          "measurement"
+        ],
+        "summary": "Region",
+        "description": "Min, max and mean over a rectangle, clipped to the frame.",
+        "operationId": "region_api_cameras__camera_id__region_post",
+        "parameters": [
+          {
+            "name": "camera_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Configured camera id.",
+              "title": "Camera Id"
+            },
+            "description": "Configured camera id."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegionStatsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cameras/{camera_id}/calibrate": {
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "summary": "Calibrate",
+        "description": "Trigger a shutter calibration -- the audible click.",
+        "operationId": "calibrate_api_cameras__camera_id__calibrate_post",
+        "parameters": [
+          {
+            "name": "camera_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Configured camera id.",
+              "title": "Camera Id"
+            },
+            "description": "Configured camera id."
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Calibrate Api Cameras  Camera Id  Calibrate Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cameras/{camera_id}/range": {
+      "post": {
+        "tags": [
+          "control"
+        ],
+        "summary": "Set Range",
+        "description": "Switch between the normal and extended temperature ranges.",
+        "operationId": "set_range_api_cameras__camera_id__range_post",
+        "parameters": [
+          {
+            "name": "camera_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Configured camera id.",
+              "title": "Camera Id"
+            },
+            "description": "Configured camera id."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RangeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Set Range Api Cameras  Camera Id  Range Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cameras/{camera_id}/parameters": {
+      "patch": {
+        "tags": [
+          "control"
+        ],
+        "summary": "Set Parameters",
+        "description": "Write measurement parameters. Omitted fields are left as they are.",
+        "operationId": "set_parameters_api_cameras__camera_id__parameters_patch",
+        "parameters": [
+          {
+            "name": "camera_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Configured camera id.",
+              "title": "Camera Id"
+            },
+            "description": "Configured camera id."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParametersRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustmentsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cameras/{camera_id}/lockin": {
+      "post": {
+        "tags": [
+          "lock-in"
+        ],
+        "summary": "Start Lockin",
+        "description": "Start a lock-in run. Returns immediately; poll the job for progress.",
+        "operationId": "start_lockin_api_cameras__camera_id__lockin_post",
+        "parameters": [
+          {
+            "name": "camera_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Configured camera id.",
+              "title": "Camera Id"
+            },
+            "description": "Configured camera id."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LockInRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LockInJobOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "tags": [
+          "lock-in"
+        ],
+        "summary": "List Jobs",
+        "description": "Every run this process still remembers, oldest first.",
+        "operationId": "list_jobs_api_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LockInJobOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Jobs Api Jobs Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "lock-in"
+        ],
+        "summary": "Get Job Status",
+        "description": "One run's progress.",
+        "operationId": "get_job_status_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Lock-in job id.",
+              "title": "Job Id"
+            },
+            "description": "Lock-in job id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LockInJobOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "lock-in"
+        ],
+        "summary": "Cancel Job",
+        "description": "Stop a run and release its load. Finished runs are left alone.",
+        "operationId": "cancel_job_api_jobs__job_id__delete",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Lock-in job id.",
+              "title": "Job Id"
+            },
+            "description": "Lock-in job id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LockInJobOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/result.npz": {
+      "get": {
+        "tags": [
+          "lock-in"
+        ],
+        "summary": "Lockin Arrays",
+        "description": "Both demodulated components, for analysis rather than viewing.\n\nReadable with `numpy.load`, which gives a mapping of `in_phase` and\n`quadrature`. Magnitude and phase are derived from those two, so storing\nthem as well would only be a chance for the file to disagree with itself.",
+        "operationId": "lockin_arrays_api_jobs__job_id__result_npz_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Lock-in job id.",
+              "title": "Job Id"
+            },
+            "description": "Lock-in job id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/result.png": {
+      "get": {
+        "tags": [
+          "lock-in"
+        ],
+        "summary": "Lockin Image",
+        "description": "One component of a finished run, rendered.",
+        "operationId": "lockin_image_api_jobs__job_id__result_png_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Lock-in job id.",
+              "title": "Job Id"
+            },
+            "description": "Lock-in job id."
+          },
+          {
+            "name": "component",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "magnitude",
+                "phase",
+                "in_phase",
+                "quadrature"
+              ],
+              "type": "string",
+              "description": "Which image to render.",
+              "default": "magnitude",
+              "title": "Component"
+            },
+            "description": "Which image to render."
+          },
+          {
+            "name": "colormap",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Palette name.",
+              "default": "inferno",
+              "title": "Colormap"
+            },
+            "description": "Palette name."
+          },
+          {
+            "name": "equalize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Equalise the histogram.",
+              "default": false,
+              "title": "Equalize"
+            },
+            "description": "Equalise the histogram."
+          },
+          {
+            "name": "upscale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 8,
+              "minimum": 1,
+              "default": 1,
+              "title": "Upscale"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AdjustmentsOut": {
+        "properties": {
+          "range_mode": {
+            "type": "integer",
+            "title": "Range Mode"
+          },
+          "user_offset": {
+            "type": "number",
+            "title": "User Offset"
+          },
+          "gain_m": {
+            "type": "number",
+            "title": "Gain M"
+          },
+          "gain_b": {
+            "type": "number",
+            "title": "Gain B"
+          }
+        },
+        "type": "object",
+        "required": [
+          "range_mode",
+          "user_offset",
+          "gain_m",
+          "gain_b"
+        ],
+        "title": "AdjustmentsOut",
+        "description": "Operator corrections currently in effect."
+      },
+      "CameraDetailOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "frames": {
+            "type": "integer",
+            "title": "Frames"
+          },
+          "fps": {
+            "type": "number",
+            "title": "Fps"
+          },
+          "read_errors": {
+            "type": "integer",
+            "title": "Read Errors"
+          },
+          "reconnects": {
+            "type": "integer",
+            "title": "Reconnects"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "subscribers": {
+            "type": "integer",
+            "title": "Subscribers"
+          },
+          "sequence": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence"
+          },
+          "corrected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corrected"
+          },
+          "telemetry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TelemetryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "adjustments": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustmentsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "connected",
+          "frames",
+          "fps",
+          "read_errors",
+          "reconnects",
+          "last_error",
+          "source",
+          "width",
+          "height",
+          "subscribers"
+        ],
+        "title": "CameraDetailOut",
+        "description": "Status plus whatever the most recent frame told us."
+      },
+      "CameraStatusOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "frames": {
+            "type": "integer",
+            "title": "Frames"
+          },
+          "fps": {
+            "type": "number",
+            "title": "Fps"
+          },
+          "read_errors": {
+            "type": "integer",
+            "title": "Read Errors"
+          },
+          "reconnects": {
+            "type": "integer",
+            "title": "Reconnects"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "subscribers": {
+            "type": "integer",
+            "title": "Subscribers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "connected",
+          "frames",
+          "fps",
+          "read_errors",
+          "reconnects",
+          "last_error",
+          "source",
+          "width",
+          "height",
+          "subscribers"
+        ],
+        "title": "CameraStatusOut",
+        "description": "Capture health for one camera."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded"
+            ],
+            "title": "Status"
+          },
+          "cameras": {
+            "type": "integer",
+            "title": "Cameras"
+          },
+          "connected": {
+            "type": "integer",
+            "title": "Connected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "cameras",
+          "connected"
+        ],
+        "title": "HealthOut",
+        "description": "Liveness and readiness."
+      },
+      "LockInJobOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "camera": {
+            "type": "string",
+            "title": "Camera"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State"
+          },
+          "frequency_hz": {
+            "type": "number",
+            "title": "Frequency Hz"
+          },
+          "integration_s": {
+            "type": "number",
+            "title": "Integration S"
+          },
+          "signal": {
+            "type": "string",
+            "enum": [
+              "raw",
+              "celsius"
+            ],
+            "title": "Signal"
+          },
+          "modulator": {
+            "type": "string",
+            "title": "Modulator"
+          },
+          "created_at": {
+            "type": "number",
+            "title": "Created At"
+          },
+          "frames": {
+            "type": "integer",
+            "title": "Frames"
+          },
+          "elapsed_s": {
+            "type": "number",
+            "title": "Elapsed S"
+          },
+          "progress": {
+            "type": "number",
+            "title": "Progress"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "periods": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Periods"
+          },
+          "samples_per_period": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Samples Per Period"
+          },
+          "aliased": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliased"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "camera",
+          "state",
+          "frequency_hz",
+          "integration_s",
+          "signal",
+          "modulator",
+          "created_at",
+          "frames",
+          "elapsed_s",
+          "progress"
+        ],
+        "title": "LockInJobOut",
+        "description": "A run's progress, and its shape once it has one."
+      },
+      "LockInRequest": {
+        "properties": {
+          "frequency_hz": {
+            "type": "number",
+            "maximum": 100.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Frequency Hz"
+          },
+          "integration_s": {
+            "type": "number",
+            "maximum": 3600.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Integration S"
+          },
+          "signal": {
+            "type": "string",
+            "enum": [
+              "raw",
+              "celsius"
+            ],
+            "title": "Signal",
+            "default": "raw"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "frequency_hz",
+          "integration_s"
+        ],
+        "title": "LockInRequest",
+        "description": "A lock-in run to start.\n\nThe serial port is deliberately absent: it comes from the camera's\nconfiguration, so the API cannot be used to open an arbitrary device on the\nhost. See `CameraConfig.lockin_port`."
+      },
+      "MeasurementOut": {
+        "properties": {
+          "x": {
+            "type": "integer",
+            "title": "X"
+          },
+          "y": {
+            "type": "integer",
+            "title": "Y"
+          },
+          "celsius": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Celsius"
+          }
+        },
+        "type": "object",
+        "required": [
+          "x",
+          "y",
+          "celsius"
+        ],
+        "title": "MeasurementOut",
+        "description": "A temperature reading at a pixel."
+      },
+      "ParametersRequest": {
+        "properties": {
+          "emissivity": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emissivity"
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 65535.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance M"
+          },
+          "humidity": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Humidity"
+          },
+          "air_temp_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Air Temp C"
+          },
+          "reflected_temp_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reflected Temp C"
+          },
+          "correction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correction"
+          },
+          "temperature_offset": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature Offset"
+          }
+        },
+        "type": "object",
+        "title": "ParametersRequest",
+        "description": "Measurement parameters to write to the camera. Omitted fields are left alone."
+      },
+      "RangeRequest": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "high"
+            ],
+            "title": "Mode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "RangeRequest",
+        "description": "Which temperature range the camera should use."
+      },
+      "RegionRequest": {
+        "properties": {
+          "x1": {
+            "type": "integer",
+            "title": "X1"
+          },
+          "y1": {
+            "type": "integer",
+            "title": "Y1"
+          },
+          "x2": {
+            "type": "integer",
+            "title": "X2"
+          },
+          "y2": {
+            "type": "integer",
+            "title": "Y2"
+          }
+        },
+        "type": "object",
+        "required": [
+          "x1",
+          "y1",
+          "x2",
+          "y2"
+        ],
+        "title": "RegionRequest",
+        "description": "A rectangle to summarise. `x2`/`y2` are exclusive."
+      },
+      "RegionStatsOut": {
+        "properties": {
+          "minimum": {
+            "$ref": "#/components/schemas/MeasurementOut"
+          },
+          "maximum": {
+            "$ref": "#/components/schemas/MeasurementOut"
+          },
+          "mean_celsius": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Celsius"
+          }
+        },
+        "type": "object",
+        "required": [
+          "minimum",
+          "maximum",
+          "mean_celsius"
+        ],
+        "title": "RegionStatsOut",
+        "description": "Temperature summary over an area."
+      },
+      "TelemetryOut": {
+        "properties": {
+          "shutter_temp_c": {
+            "type": "number",
+            "title": "Shutter Temp C"
+          },
+          "core_temp_c": {
+            "type": "number",
+            "title": "Core Temp C"
+          },
+          "fpa_temp_c": {
+            "type": "number",
+            "title": "Fpa Temp C"
+          },
+          "emissivity": {
+            "type": "number",
+            "title": "Emissivity"
+          },
+          "humidity": {
+            "type": "number",
+            "title": "Humidity"
+          },
+          "air_temp_c": {
+            "type": "number",
+            "title": "Air Temp C"
+          },
+          "reflected_temp_c": {
+            "type": "number",
+            "title": "Reflected Temp C"
+          },
+          "distance_m": {
+            "type": "integer",
+            "title": "Distance M"
+          },
+          "correction": {
+            "type": "number",
+            "title": "Correction"
+          },
+          "firmware": {
+            "type": "string",
+            "title": "Firmware"
+          },
+          "serial": {
+            "type": "string",
+            "title": "Serial"
+          },
+          "shutter_trim_applied": {
+            "type": "boolean",
+            "title": "Shutter Trim Applied"
+          }
+        },
+        "type": "object",
+        "required": [
+          "shutter_temp_c",
+          "core_temp_c",
+          "fpa_temp_c",
+          "emissivity",
+          "humidity",
+          "air_temp_c",
+          "reflected_temp_c",
+          "distance_m",
+          "correction",
+          "firmware",
+          "serial",
+          "shutter_trim_applied"
+        ],
+        "title": "TelemetryOut",
+        "description": "What the camera reports about itself."
+      },
+      "TemperaturesOut": {
+        "properties": {
+          "camera": {
+            "type": "string",
+            "title": "Camera"
+          },
+          "sequence": {
+            "type": "integer",
+            "title": "Sequence"
+          },
+          "points": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MeasurementOut"
+            },
+            "type": "object",
+            "title": "Points"
+          },
+          "minimum": {
+            "$ref": "#/components/schemas/MeasurementOut"
+          },
+          "maximum": {
+            "$ref": "#/components/schemas/MeasurementOut"
+          },
+          "mean_celsius": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Celsius"
+          },
+          "center": {
+            "$ref": "#/components/schemas/MeasurementOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "camera",
+          "sequence",
+          "points",
+          "minimum",
+          "maximum",
+          "mean_celsius",
+          "center"
+        ],
+        "title": "TemperaturesOut",
+        "description": "Every configured point on one frame, plus frame-wide extremes."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:5000"
+    }
+  ]
+}

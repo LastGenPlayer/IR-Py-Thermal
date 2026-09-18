@@ -4,13 +4,15 @@ from irthermal.camera.base import (
     CameraError,
     CameraSource,
     CameraUnavailableError,
+    ControlUnsupportedError,
     FrameReadError,
     SourceFactory,
 )
 from irthermal.camera.emulator import EmulatorSource
 from irthermal.camera.manager import CameraManager, UnknownCameraError
 from irthermal.camera.runtime import CameraRuntime, CameraStatus, build_source_factory
-from irthermal.camera.v4l2 import V4L2Source
+from irthermal.camera.transport import Transport, open_transport
+from irthermal.camera.uvc import UvcSource
 
 __all__ = [
     "CameraError",
@@ -19,10 +21,13 @@ __all__ = [
     "CameraSource",
     "CameraStatus",
     "CameraUnavailableError",
+    "ControlUnsupportedError",
     "EmulatorSource",
     "FrameReadError",
     "SourceFactory",
+    "Transport",
     "UnknownCameraError",
-    "V4L2Source",
+    "UvcSource",
     "build_source_factory",
+    "open_transport",
 ]

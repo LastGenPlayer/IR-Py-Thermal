@@ -17,6 +17,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass, replace
+from pathlib import Path
 from queue import Empty, Queue
 from typing import Any
 
@@ -33,7 +34,7 @@ from irthermal.camera.processing import RawCorrector, clamp_to_table
 from irthermal.core.commands import ACTION_SHUTTER_CALIBRATE
 from irthermal.core.frame import Frame
 from irthermal.core.radiometry import RadiometryAdjustments, RadiometryInputs, temperature_table
-from irthermal.core.telemetry import CameraTelemetry, parse_telemetry
+from irthermal.core.telemetry import CameraTelemetry, FrameWords, parse_telemetry
 from irthermal.hub import FrameHub
 from irthermal.logging import get_logger
 
@@ -75,10 +76,12 @@ class FrameReader:
         hub: FrameHub,
         *,
         adjustments: RadiometryAdjustments | None = None,
+        calibration_file: Path | None = None,
     ) -> None:
         self.camera_id = camera_id
         self._factory = factory
         self._hub = hub
+        self._calibration_file = calibration_file
 
         # Replaced wholesale, never mutated, so the capture thread always sees a
         # coherent set without locking.
@@ -224,7 +227,7 @@ class FrameReader:
         log.info("camera.connected", camera=self.camera_id, source=self.source.description)
 
         if self.source.camera_raw:
-            self._calibrate_raw()
+            self._calibrate_on_connect()
         return True
 
     def _close_source(self, *, reconnect: bool) -> None:
@@ -303,14 +306,100 @@ class FrameReader:
 
     # --- operations that run on the capture thread --------------------------
 
-    def _calibrate_raw(self, *, settle_frames: int = 8) -> None:
-        """Close the shutter, capture a reference frame, build the dead-pixel mask."""
+    def _calibrate_on_connect(self) -> None:
+        """Flat-field a raw camera, by the best means this transport allows.
+
+        A fresh reference beats a stored one, so a camera whose shutter can be
+        driven is calibrated outright. Without a control channel there is no way
+        to close the shutter, and a reference taken against an open one would
+        capture the scene rather than a uniform field -- then subtract that scene
+        from every later frame. Such a camera falls back to whatever was stored
+        last time, and failing that streams uncorrected.
+        """
+        source = self.source
+        if source is None:  # pragma: no cover - caller guarantees one
+            return
+
+        if source.supports_control:
+            try:
+                self._calibrate_raw()
+            except CameraError as exc:
+                # A camera that cannot calibrate is still worth streaming.
+                log.warning("camera.calibration_failed", camera=self.camera_id, error=str(exc))
+            return
+
+        if self._load_calibration():
+            return
+
+        hint = (
+            "cover the lens and POST /calibrate"
+            if self._calibration_file is None
+            else f"cover the lens and POST /calibrate; it will be kept in {self._calibration_file}"
+        )
+        log.warning(
+            "camera.calibration_skipped",
+            camera=self.camera_id,
+            source=source.description,
+            reason=f"transport carries no control channel; {hint}",
+        )
+
+    def _load_calibration(self) -> bool:
+        """Adopt a stored reference, if one matching this sensor exists."""
+        path = self._calibration_file
+        source = self.source
+        if path is None or source is None:
+            return False
+
+        params = source.params
+        record = self.corrector.load(path, shape=(params.height, params.width))
+        if record is None:
+            return False
+
+        log.info(
+            "camera.calibration_loaded",
+            camera=self.camera_id,
+            path=str(path),
+            age_s=round(record.age_s, 1),
+            dead_pixels=record.dead_pixels,
+            fpa_temp_c=round(record.fpa_temp_c, 2),
+        )
+        return True
+
+    def _store_calibration(self, words: FrameWords) -> None:
+        """Persist the reference just taken, so the next run need not ask again."""
+        path = self._calibration_file
+        source = self.source
+        if path is None or source is None:
+            return
+
+        telemetry = parse_telemetry(words, source.params, camera_raw=source.camera_raw)
+        try:
+            self.corrector.save(path, fpa_temp_c=telemetry.fpa_temp_c)
+        except OSError as exc:
+            # Losing the file costs a manual calibration next time, nothing more.
+            log.warning(
+                "camera.calibration_save_failed",
+                camera=self.camera_id,
+                path=str(path),
+                error=str(exc),
+            )
+            return
+
+        log.info("camera.calibration_saved", camera=self.camera_id, path=str(path))
+
+    def _calibrate_raw(self, *, settle_frames: int = 8, use_shutter: bool = True) -> None:
+        """Close the shutter, capture a reference frame, build the dead-pixel mask.
+
+        `use_shutter` is False when the transport cannot command one; the caller
+        is then responsible for blocking the lens before asking.
+        """
         source = self.source
         if source is None:
             raise CameraUnavailableError("cannot calibrate without a source")
 
         self.corrector.reset()
-        source.send_command(ACTION_SHUTTER_CALIBRATE)
+        if use_shutter:
+            source.send_command(ACTION_SHUTTER_CALIBRATE)
 
         # Let the shutter close and the pipeline flush before sampling.
         for _ in range(settle_frames):
@@ -320,6 +409,7 @@ class FrameReader:
         params = source.params
         reference = words[: params.pixel_count].reshape(params.height, params.width).copy()
         self.corrector.calibrate(reference)
+        self._store_calibration(words)
 
         log.info(
             "camera.calibrated",

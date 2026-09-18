@@ -15,7 +15,7 @@ from typing import Any, Self
 from irthermal.camera.base import CameraError, CameraSource, SourceFactory
 from irthermal.camera.emulator import EmulatorSource
 from irthermal.camera.reader import FrameReader, ReaderStats
-from irthermal.camera.v4l2 import V4L2Source
+from irthermal.camera.uvc import UvcSource
 from irthermal.config import CameraConfig
 from irthermal.core import commands
 from irthermal.core.frame import Frame, Measurement
@@ -77,7 +77,7 @@ def build_source_factory(config: CameraConfig) -> SourceFactory:
     device = config.device
 
     def open_device() -> CameraSource:
-        return V4L2Source.open(device, camera_raw=config.raw_mode)
+        return UvcSource.open(device, camera_raw=config.raw_mode, transport=config.transport)
 
     return open_device
 
@@ -109,9 +109,20 @@ class CameraRuntime:
             self._factory,
             self._hub,
             adjustments=RadiometryAdjustments(user_offset=self.config.temperature_offset),
+            calibration_file=self.config.calibration_file,
         )
         self._reader.start()
         log.info("camera.starting", camera=self.config.id)
+
+    def close_streams(self) -> None:
+        """End every subscription, leaving capture running.
+
+        Called at the start of a shutdown so streaming responses finish of their
+        own accord. They only end when their subscription does, and waiting for
+        that is the first thing the server does on the way down.
+        """
+        if self._hub is not None:
+            self._hub.close()
 
     async def stop(self) -> None:
         """Stop capturing and end every subscription."""
@@ -205,7 +216,7 @@ class CameraRuntime:
             if reader.source is None:
                 raise CameraError(f"camera {reader.camera_id} is not connected")
             if reader.source.camera_raw:
-                reader._calibrate_raw()
+                reader._calibrate_raw(use_shutter=reader.source.supports_control)
             else:
                 reader.source.send_command(commands.ACTION_SHUTTER_CALIBRATE)
 

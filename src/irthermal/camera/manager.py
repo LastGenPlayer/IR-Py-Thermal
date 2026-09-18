@@ -68,6 +68,17 @@ class CameraManager:
 
         log.info("cameras.started", count=len(self._runtimes))
 
+    def close_streams(self) -> None:
+        """End every live subscription across every camera, but keep capturing.
+
+        Uvicorn waits for in-flight requests before it runs lifespan shutdown, so
+        anything that only ends when its subscriber goes away -- an MJPEG
+        response, a telemetry socket -- would otherwise still be running when
+        that wait times out, and get cancelled rather than finishing.
+        """
+        for runtime in self._runtimes.values():
+            runtime.close_streams()
+
     async def stop(self) -> None:
         """Stop every camera, whatever any individual one does on the way down."""
         await asyncio.gather(

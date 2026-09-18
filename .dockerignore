@@ -1,0 +1,21 @@
+# What the image build is allowed to see.
+#
+# The Dockerfile copies three things -- pyproject.toml, README.md and src/ --
+# so everything is excluded first and those are named back in. A denylist would
+# have to grow every time the working tree does; this way a new virtualenv, a
+# saved capture or somebody's scratch notes can never quietly enlarge the
+# context. The cost is that a new COPY needs a matching line here.
+#
+# Without this file the context is ~414 MB, almost all of it .venv and
+# .mypy_cache; with it, about a megabyte.
+
+*
+
+!pyproject.toml
+!README.md
+!src
+
+# Artefacts that live inside the tree just re-included above.
+src/**/__pycache__
+src/**/*.py[cod]
+src/**/*.egg-info

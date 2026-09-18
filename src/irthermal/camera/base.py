@@ -27,6 +27,15 @@ class FrameReadError(CameraError):
     """A frame could not be read. Usually transient; the reader will retry."""
 
 
+class ControlUnsupportedError(CameraError):
+    """The camera is streaming through a transport that carries no control channel.
+
+    Raised rather than returning False so the request fails loudly. A silent
+    no-op here would leave a caller believing it had triggered a calibration or
+    written an emissivity that never reached the device.
+    """
+
+
 @runtime_checkable
 class CameraSource(Protocol):
     """A source of complete frames."""
@@ -44,6 +53,16 @@ class CameraSource(Protocol):
     @property
     def description(self) -> str:
         """Human-readable origin, for logs."""
+        ...
+
+    @property
+    def supports_control(self) -> bool:
+        """Whether control commands can reach the device.
+
+        False when the camera streams through a transport that carries pixels
+        only -- an ffmpeg pipe, for instance. Callers check this before offering
+        calibration, range switching or parameter writes.
+        """
         ...
 
     def read_words(self) -> FrameWords:

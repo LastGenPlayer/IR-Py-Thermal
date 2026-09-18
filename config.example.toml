@@ -17,6 +17,27 @@ log_format = "json"   # json | console
 id = "pi-rack"
 device = "/dev/video0"
 raw_mode = true            # sensor sends unprocessed data; correct it in software
+
+# Where to keep the flat-field reference between runs. Only meaningful with
+# raw_mode. A camera on a transport with no control channel cannot have its
+# shutter closed, so its reference is taken by hand -- cover the lens, POST
+# /calibrate -- and without this it would have to be retaken after every
+# restart. Saved on calibration, reloaded on connect, ignored if it does not
+# match the sensor.
+calibration_file = "/var/lib/irthermal/pi-rack.npz"
+
+# How to reach the camera: auto | v4l2 | ffmpeg.
+#
+#   auto    prefers V4L2 on Linux and falls back to ffmpeg; goes straight to
+#           ffmpeg on Windows and macOS, where OpenCV decodes the sensor's
+#           16-bit words to BGR before the driver can read them.
+#   v4l2    Linux only. The only transport carrying the control channel, so
+#           calibration, range switching and parameter writes need it.
+#   ffmpeg  Any OS. Streaming and measurement only; control returns 501.
+#
+# `device` means whatever the transport names it: a V4L2 path on Linux, a
+# DirectShow device name on Windows ("T2SPro"), an avfoundation index on macOS.
+transport = "auto"
 temperature_offset = 8.5   # constant trim, found once per camera
 colormap = "inferno"
 emissivity = 0.95

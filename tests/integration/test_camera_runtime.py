@@ -388,3 +388,59 @@ async def test_unknown_camera_id_is_reported_clearly() -> None:
 
     with pytest.raises(UnknownCameraError, match="unknown camera"):
         manager.get("missing")
+
+
+# --- releasing subscribers at shutdown --------------------------------------
+
+
+async def test_close_streams_ends_subscriptions_without_stopping_capture(
+    small_params: ResolutionParams,
+) -> None:
+    """What lets a streaming response finish instead of being cancelled.
+
+    The server waits for in-flight requests before it runs lifespan shutdown, and
+    an MJPEG response only ends when its subscription does. Closing them first
+    turns a forced cancellation into an ordinary completion.
+    """
+    runtime = CameraRuntime(camera_config("shutdown"), emulator_factory(small_params))
+    await runtime.start()
+    try:
+        received: list[int] = []
+
+        async def consume() -> None:
+            async with runtime.subscribe() as subscription:
+                async for frame in subscription:
+                    received.append(frame.sequence)
+
+        consumer = asyncio.create_task(consume())
+        await asyncio.wait_for(_until(lambda: bool(received)), timeout=5.0)
+
+        runtime.close_streams()
+
+        # The iteration ends on its own; nothing has to cancel it.
+        await asyncio.wait_for(consumer, timeout=5.0)
+        assert received
+
+        # Capture is untouched -- only the subscribers were released.
+        assert runtime.status().connected
+    finally:
+        await runtime.stop()
+
+
+async def test_close_streams_is_safe_before_start_and_twice(
+    small_params: ResolutionParams,
+) -> None:
+    runtime = CameraRuntime(camera_config("idle"), emulator_factory(small_params))
+    runtime.close_streams()  # never started
+
+    await runtime.start()
+    try:
+        runtime.close_streams()
+        runtime.close_streams()
+    finally:
+        await runtime.stop()
+
+
+async def _until(predicate) -> None:
+    while not predicate():
+        await asyncio.sleep(0.01)

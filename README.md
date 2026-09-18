@@ -59,7 +59,32 @@ irthermal check-config -c config.example.toml
 irthermal serve -c config.toml
 ```
 
-Python 3.12 or newer.
+Python 3.12 or newer. On Windows and macOS add the `ffmpeg` extra -- see
+[Windows and macOS](#windows-and-macos).
+
+```bash
+pip install -e ".[dev,ffmpeg]"
+```
+
+### Stopping it
+
+Ctrl+C, and it is gone in well under a second with viewers still attached.
+
+Getting there took some care. The MJPEG stream and the telemetry WebSocket both
+run until the *client* hangs up, and uvicorn waits for in-flight requests before
+it runs the application's shutdown -- which is the very thing that would end
+those subscriptions. Left alone it waits forever, so one open browser tab hangs
+Ctrl+C with the listener already closed and the capture threads still running.
+
+`StreamAwareServer` in [`server.py`](src/irthermal/server.py) closes the
+subscriptions first, so the responses complete by themselves and the wait ends
+on its own. `SHUTDOWN_TIMEOUT_S` stays as a five-second backstop for anything
+that misses; reaching it cancels live requests, and uvicorn logs each
+cancellation as an error with a full traceback, which is what a clean shutdown
+now avoids entirely.
+
+`--reload` is refused. It needs the app as an import string and would run a
+second copy of the server, and the two would fight over the same camera.
 
 ### With no camera to hand
 
@@ -97,6 +122,7 @@ log_format = "json"    # json | console
 [[cameras]]
 id = "pi-rack"                 # used in URLs and metric labels
 device = "/dev/video0"         # or auto_detect = true, or replay_file = "..."
+transport = "auto"             # auto | v4l2 | ffmpeg
 raw_mode = true                # camera sends unprocessed sensor data
 temperature_offset = 8.5       # constant trim, found once per camera
 colormap = "inferno"
@@ -122,9 +148,105 @@ inpainting on every frame. `POST .../calibrate` recalibrates.
 Raw mode often leaves a constant offset. Find it once for your camera and put
 it in `temperature_offset`.
 
+## Windows and macOS
+
+The camera is a UVC device, but it does not send video: it sends 16-bit sensor
+words wearing a `yuyv422` format tag. OpenCV's Windows and macOS backends decode
+that to BGR before anything can stop them -- and they accept
+`CAP_PROP_CONVERT_RGB = 0` while ignoring it, so the loss is silent. What arrives
+is 196x256x3 bytes where the driver needs 196x256x2, and the measurement is gone.
+
+ffmpeg reads the capture pin at its native format and copies it out untouched,
+which works on every platform. Install it one of these ways:
+
+```bash
+pip install 'irthermal[ffmpeg]'      # bundled binary, nothing else to do
+winget install Gyan.FFmpeg           # or apt install ffmpeg / brew install ffmpeg
+```
+
+Set `IRTHERMAL_FFMPEG` to use a specific binary. `transport = "auto"` picks it
+automatically off Linux, so a config that works on a Pi works on a laptop:
+
+```toml
+[[cameras]]
+id = "bench"
+auto_detect = true
+raw_mode = true
+```
+
+Naming the device explicitly takes the transport's own spelling -- a DirectShow
+name on Windows, an avfoundation index on macOS:
+
+```toml
+device = "T2SPro"        # Windows;  `ffmpeg -list_devices true -f dshow -i dummy`
+```
+
+### What an ffmpeg pipe cannot do
+
+A pipe carries pixels and nothing else. These cameras have no control endpoint
+-- commands are smuggled through the UVC zoom control -- so anything that writes
+to the camera needs a V4L2 handle, which means Linux.
+
+| | ffmpeg | V4L2 |
+|---|---|---|
+| Streaming, snapshots, measurement, metrics, lock-in | yes | yes |
+| `temperature_offset`, colormap, scaling | yes | yes |
+| Shutter calibration, `/range`, `/parameters` | **501** | yes |
+
+Raw-mode cameras are the one real limitation. Flat-field correction needs a
+reference frame taken with the shutter closed, and the shutter cannot be closed
+over a pipe. Rather than capture the scene and subtract it from every later
+frame, the server logs `camera.calibration_skipped` and streams uncorrected --
+temperatures will be wrong until it is calibrated. Cover the lens and ask
+explicitly:
+
+```bash
+curl -X POST localhost:8000/api/cameras/bench/calibrate
+```
+
+Set `calibration_file` and that reference is kept, so this is a one-time chore
+rather than something to repeat after every restart:
+
+```toml
+[[cameras]]
+id = "bench"
+auto_detect = true
+raw_mode = true
+calibration_file = "/var/lib/irthermal/bench.npz"
+```
+
+It is written whenever a calibration succeeds and reloaded on connect, and
+refused if it does not match the sensor it is loaded against. A camera whose
+shutter *can* be driven ignores the file and calibrates fresh, which is always
+better.
+
+The stored pattern keeps its value as the camera warms. Measured on a T2S+ over
+two minutes, the per-column pattern held to within 1% while the overall level
+moved about 59 counts -- so what drifts is a single scalar, and that is what
+`temperature_offset` is for. Recalibrate when the striping becomes visible
+again, not on a schedule.
+
+These sensors do not fire their own shutter in raw mode: 3014 consecutive
+frames showed no shutter event at all, so there is nothing for the server to
+detect and adopt on its own.
+
 ## HTTP API
 
-Everything lives under `/api`, and `/docs` is the generated reference.
+Everything lives under `/api`, and `/docs` is the generated reference. For an
+API client -- Bruno, Insomnia, Postman -- write the schema to a file and import
+it. No camera is opened and no port is bound, so a config is optional:
+
+```bash
+irthermal openapi -o docs/openapi.json          # base URL: http://localhost:8000
+irthermal openapi -c config.toml                # takes the configured host:port
+irthermal openapi --server-url http://pi-rack.local:8000
+```
+
+A checked-in copy lives at [`docs/openapi.json`](docs/openapi.json). It records
+a `servers` entry, which FastAPI itself omits and without which an imported
+collection has no host to send anything to. The telemetry WebSocket is absent
+because OpenAPI cannot describe one; `/metrics` and `/health` are deliberately
+kept out of the schema.
 
 | | |
 |---|---|

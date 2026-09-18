@@ -1,0 +1,20 @@
+services:
+  irthermal:
+    build: .
+    image: irthermal:2
+    container_name: irthermal
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    devices:
+      - /dev/video0:/dev/video0
+      # - /dev/video2:/dev/video2
+      # - /dev/ttyUSB0:/dev/ttyUSB0
+
+    volumes:
+      - ./config.toml:/etc/irthermal/config.toml:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true

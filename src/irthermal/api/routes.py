@@ -48,7 +48,7 @@ from irthermal.api.schemas import (
     TemperaturesOut,
     celsius,
 )
-from irthermal.camera.base import CameraError
+from irthermal.camera.base import CameraError, ControlUnsupportedError
 from irthermal.camera.modulator import ModulatorError
 from irthermal.core.lockin import LockInResult
 from irthermal.core.render import (
@@ -74,9 +74,15 @@ DEFAULT_TELEMETRY_FPS = 4.0
 
 
 async def _guard(operation: Awaitable[None]) -> None:
-    """Report a camera fault as a service-state problem, not a server error."""
+    """Report a camera fault as a service-state problem, not a server error.
+
+    A control the transport cannot carry is a different thing from a camera that
+    is merely down: retrying will never help, so it answers 501 rather than 503.
+    """
     try:
         await operation
+    except ControlUnsupportedError as exc:
+        raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from None
     except CameraError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from None
 
