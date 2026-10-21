@@ -14,3 +14,4 @@ dist/
 build/
 /config.toml
 *.npz
+/.vs
