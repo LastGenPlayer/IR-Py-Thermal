@@ -15,6 +15,9 @@ let socket = null;
 let reconnectTimer = null;
 let syncControls = false;
 
+let x = 0;
+let y = 0;
+
 // --- helpers ---------------------------------------------------------------
 
 async function api(path, options) {
@@ -316,5 +319,33 @@ async function main() {
     showError(`Could not reach the server: ${error.message}`);
   }
 }
+
+
+document.addEventListener("DOMContentLoaded", () => {
+    const stream = document.getElementById("stream");
+    const coordinates = document.getElementById("coordinates");
+    const upscale = Number.parseFloat(el("upscale-value").textContent);
+
+    if (!stream || !coordinates) {
+        console.error("Missing video");
+        return;
+    }
+
+    stream.addEventListener("mousemove", (event) => {
+        const rect = stream.getBoundingClientRect();
+        x = Math.floor((event.clientX - rect.left) / upscale);
+        y = Math.floor((event.clientY - rect.top) / upscale);
+
+        coordinates.textContent =
+            `X: ${x}, ` +
+            `Y: ${y}`;
+    });
+
+    stream.addEventListener("mouseleave", () => {
+        x = 0;
+        y = 0;
+        coordinates.textContent = "X: —, Y: —";
+    });
+});
 
 main();
