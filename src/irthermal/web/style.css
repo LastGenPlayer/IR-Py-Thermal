@@ -105,7 +105,7 @@ main {
   font-size: 12px;
 }
 
-.panel, .panel-form { display: grid; gap: 12px; }
+.panel, .panel-form { display: grid; gap: 12px; min-width: 0; }
 
 fieldset {
   display: grid;
@@ -115,6 +115,7 @@ fieldset {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
+  min-width: 0;
 }
 
 legend {
@@ -139,7 +140,7 @@ label.inline, label.check {
   color: var(--text);
 }
 
-.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 0; }
 
 select, input[type="number"], button {
   padding: 6px 8px;
@@ -148,6 +149,8 @@ select, input[type="number"], button {
   border: 1px solid var(--line);
   border-radius: 4px;
   font: inherit;
+  width: 100%;
+  min-width: 0;
 }
 
 input[type="range"] { width: 100%; accent-color: var(--accent); }
@@ -194,4 +197,5 @@ dd { margin: 0; text-align: right; }
 
 @media (max-width: 860px) {
   main, .readings { grid-template-columns: minmax(0, 1fr); }
+
 }
