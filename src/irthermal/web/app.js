@@ -18,6 +18,9 @@ let syncControls = false;
 let x = 0;
 let y = 0;
 
+const stream = document.getElementById("stream");
+const markers = document.getElementById("measurePoints");
+
 // --- helpers ---------------------------------------------------------------
 
 async function api(path, options) {
@@ -124,6 +127,7 @@ function render(message) {
 
 function row(name, measurement, derived) {
   const tr = document.createElement("tr");
+  
   if (derived) tr.className = "derived";
   for (const value of [name, measurement.x, measurement.y, degrees(measurement.celsius)]) {
     const td = document.createElement("td");
@@ -133,12 +137,37 @@ function row(name, measurement, derived) {
   return tr;
 }
 
+function createPoint(name, measurement) {
+  const upscale = Number.parseFloat(el("upscale-value").textContent); // get scaling for ease of calculation
+  const rect = stream.getBoundingClientRect(); // location of the thermal feed to set measurement points on
+
+  const marker = document.createElement("div");
+  marker.className = "marker";
+
+  marker.style.left = `${rect.left + (measurement.x * upscale)}px`;
+  marker.style.top = `${rect.top + -(measurement.y * upscale - window.scrollY)}px`;
+
+  const dot = document.createElement("span");
+  dot.className = "marker-dot";
+
+  const label = document.createElement("span");
+  label.className = "marker-label";
+  label.textContent = `${name}: ${degrees(measurement.celsius)}°C`;
+
+  marker.appendChild(dot);
+  marker.appendChild(label);
+  markers.appendChild(marker);
+}
+
 function renderPoints(message) {
   const body = el("points").tBodies[0];
   body.replaceChildren();
+  markers.innerHTML = ""; // clears marker area
 
   for (const [name, measurement] of Object.entries(message.points)) {
     body.appendChild(row(name, measurement, false));
+    createPoint(name, measurement)
+
   }
   body.appendChild(row("minimum", message.minimum, true));
   body.appendChild(row("maximum", message.maximum, true));

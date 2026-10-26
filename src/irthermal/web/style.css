@@ -142,6 +142,10 @@ label.inline, label.check {
 
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 0; }
 
+.measurePoints span {
+  position: absolute;
+}
+
 select, input[type="number"], button {
   padding: 6px 8px;
   color: var(--text);
@@ -198,4 +202,42 @@ dd { margin: 0; text-align: right; }
 @media (max-width: 860px) {
   main, .readings { grid-template-columns: minmax(0, 1fr); }
 
+}
+
+
+#measurePoints {
+  position: relative;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+/* The exact marked location */
+.marker-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: red;
+  border: 1px solid rgb(0, 0, 0);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Name and temperature label */
+.marker-label {
+  position: absolute;
+  left: 8px;
+  top: -10px;
+  padding: 3px 5px;
+  background: rgba(0, 0, 0, 0.75);
+  color: white;
+  white-space: nowrap;
+  border-radius: 3px;
 }
