@@ -364,7 +364,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const upscale = Number.parseFloat(el("upscale-value").textContent);
         x = Math.floor((event.clientX - rect.left) / upscale);
         y = Math.floor((event.clientY - rect.top) / upscale);
-        console.log(x, y)
         coordinates.textContent =
             `X: ${x}, ` +
             `Y: ${y}`;
