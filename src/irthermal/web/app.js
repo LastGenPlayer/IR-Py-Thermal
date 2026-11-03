@@ -139,20 +139,20 @@ function row(name, measurement, derived) {
 
 function createPoint(name, measurement) {
   const upscale = Number.parseFloat(el("upscale-value").textContent); // get scaling for ease of calculation
-  const rect = stream.getBoundingClientRect(); // location of the thermal feed to set measurement points on
+  const streamRect = stream.getBoundingClientRect(); // location of the thermal feed to set measurement points on 
 
   const marker = document.createElement("div");
   marker.className = "marker";
 
-  marker.style.left = `${rect.left + (measurement.x * upscale)}px`;
-  marker.style.top = `${rect.top + -(measurement.y * upscale - window.scrollY)}px`;
+  marker.style.left = `${streamRect.left - 29 + (measurement.x * upscale)}px`; // 29 is pulled from ass
+  marker.style.top = `${measurement.y * upscale}px`;
 
   const dot = document.createElement("span");
   dot.className = "marker-dot";
 
   const label = document.createElement("span");
   label.className = "marker-label";
-  label.textContent = `${name}: ${degrees(measurement.celsius)}°C`;
+  label.textContent = `${name}: ${degrees(measurement.celsius)}`;
 
   marker.appendChild(dot);
   marker.appendChild(label);
@@ -353,7 +353,6 @@ async function main() {
 document.addEventListener("DOMContentLoaded", () => {
     const stream = document.getElementById("stream");
     const coordinates = document.getElementById("coordinates");
-    const upscale = Number.parseFloat(el("upscale-value").textContent);
 
     if (!stream || !coordinates) {
         console.error("Missing video");
@@ -361,10 +360,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     stream.addEventListener("mousemove", (event) => {
-        const rect = stream.getBoundingClientRect();
+        var rect = stream.getBoundingClientRect();
+        const upscale = Number.parseFloat(el("upscale-value").textContent);
         x = Math.floor((event.clientX - rect.left) / upscale);
         y = Math.floor((event.clientY - rect.top) / upscale);
-
+        console.log(x, y)
         coordinates.textContent =
             `X: ${x}, ` +
             `Y: ${y}`;
