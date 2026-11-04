@@ -14,9 +14,11 @@ let cameraId = null;
 let socket = null;
 let reconnectTimer = null;
 let syncControls = false;
+let markersActive = true;
+let addActive = false;
 
-let x = 0;
-let y = 0;
+let x = -1;
+let y = -1;
 
 const stream = document.getElementById("stream");
 const markers = document.getElementById("measurePoints");
@@ -47,6 +49,16 @@ function showError(message) {
 function degrees(value) {
   return value === null || value === undefined ? "—" : `${value.toFixed(1)} °C`;
 }
+
+function toggleMarkers() {
+  markersActive = !markersActive
+}
+
+function toggleAddMeasurePoint() {
+  addActive = !addActive
+}
+
+
 
 // --- stream ----------------------------------------------------------------
 
@@ -165,7 +177,9 @@ function renderPoints(message) {
 
   for (const [name, measurement] of Object.entries(message.points)) {
     body.appendChild(row(name, measurement, false));
-    createPoint(name, measurement)
+    if (markersActive) {
+      createPoint(name, measurement)
+    }
 
   }
   body.appendChild(row("minimum", message.minimum, true));
@@ -369,10 +383,15 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     stream.addEventListener("mouseleave", () => {
-        x = 0;
-        y = 0;
+        x = -1;
+        y = -1;
         coordinates.textContent = "X: —, Y: —";
     });
 });
+
+function addMarker(x, y, name) {
+  
+}
+
 
 main();
