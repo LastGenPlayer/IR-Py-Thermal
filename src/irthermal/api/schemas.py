@@ -330,3 +330,17 @@ class HealthOut(BaseModel):
     status: Literal["ok", "degraded"]
     cameras: int
     connected: int
+
+class AddMeasurePoint(BaseModel):
+    """Post measure point into the active measure table."""
+    name: str
+    x: int
+    y: int
+
+class AddMeasurePointOut(BaseModel):
+    """Sends point adding response."""
+    status: Literal["ok", "fail"]
+    name: str
+    x: int
+    y: int
+    

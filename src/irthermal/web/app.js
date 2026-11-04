@@ -56,6 +56,8 @@ function toggleMarkers() {
 
 function toggleAddMeasurePoint() {
   addActive = !addActive
+  if (addActive) el("toggleAdding").style.color = "#4ac97e";
+  if (!addActive) el("toggleAdding").style.color = "#ff8c42";
 }
 
 
@@ -387,11 +389,29 @@ document.addEventListener("DOMContentLoaded", () => {
         y = -1;
         coordinates.textContent = "X: —, Y: —";
     });
-});
 
-function addMarker(x, y, name) {
-  
-}
+    stream.addEventListener("mousedown", async (event) => {
+
+      if (addActive) {
+      const lableName = document.getElementById("measureLabelNaming").value
+      console.log(lableName, x, y)
+      try {
+        await api(`/cameras/${cameraId}/addPoint`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: lableName,
+                x: x,
+                y: y
+            })
+        });
+
+      } catch (error) {
+        showError(`Could not reach the server: ${error.message}`);
+      }
+    }});
+
+});
 
 
 main();

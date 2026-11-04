@@ -46,6 +46,8 @@ from irthermal.api.schemas import (
     TelemetryFrameOut,
     TelemetryOut,
     TemperaturesOut,
+    AddMeasurePoint,
+    AddMeasurePointOut,
     celsius,
 )
 from irthermal.camera.base import CameraError, ControlUnsupportedError
@@ -61,6 +63,7 @@ from irthermal.core.render import (
     normalize,
     resolve_colormap,
 )
+from irthermal.config import CameraConfig
 from irthermal.jobs import JobConflictError, LockInJob
 from irthermal.logging import get_logger
 
@@ -295,6 +298,15 @@ async def region(frame: CurrentFrame, body: RegionRequest) -> RegionStatsOut:
 
     return RegionStatsOut.of(stats)
 
+@router.post("/cameras/{camera_id}/addPoint", response_model=AddMeasurePointOut, tags=["measurement"])
+async def addPoint(camera: Camera, body: AddMeasurePoint) -> AddMeasurePointOut:
+    """Add a point to be measured."""
+    try:
+        stats = camera.config.add_point(body.name, body.x, body.y)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+
+    return AddMeasurePoint()
 
 # --- telemetry socket -------------------------------------------------------
 

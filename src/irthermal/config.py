@@ -135,6 +135,22 @@ class CameraConfig(BaseModel):
             msg = f"camera {self.id!r}: duplicate point names {duplicates}"
             raise ValueError(msg)
         return self
+    
+    def add_point(self, name, xPoint, yPoint):
+        maxNum = 1
+        for point in self.points:
+            if point.labels["group"] == name:
+                if int(point.labels["slot"]) >= maxNum:
+                    maxNum = int(point.labels["slot"]) + 1
+
+        new_point = PointConfig(
+            name=name + "-" + str(maxNum),
+            x=xPoint,
+            y=yPoint,
+            labels={"group": name, "slot": str(maxNum)}
+        )
+        self.points.append(new_point)
+        return new_point
 
 
 class ServerConfig(BaseModel):
@@ -188,7 +204,7 @@ class Settings(BaseSettings):
         has no secrets, and two more silent config sources is two too many.
         """
         return (init_settings, env_settings, TomlConfigSettingsSource(settings_cls))
-
+    
 
 def load_settings(config_path: Path | None = None) -> Settings:
     """Load settings, optionally from a TOML file other than the default."""
