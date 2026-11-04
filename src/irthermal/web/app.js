@@ -139,12 +139,11 @@ function row(name, measurement, derived) {
 
 function createPoint(name, measurement) {
   const upscale = Number.parseFloat(el("upscale-value").textContent); // get scaling for ease of calculation
-  const streamRect = stream.getBoundingClientRect(); // location of the thermal feed to set measurement points on 
 
   const marker = document.createElement("div");
   marker.className = "marker";
 
-  marker.style.left = `${streamRect.left - 29 + (measurement.x * upscale)}px`; // 29 is pulled from ass
+  marker.style.left = `${(measurement.x * upscale) - (stream.clientWidth/2)}px`;
   marker.style.top = `${measurement.y * upscale}px`;
 
   const dot = document.createElement("span");
