@@ -61,23 +61,15 @@
       <label>Zoom <output id="upscale-value">3&times;</output>
         <input type="range" id="upscale" min="1" max="8" step="1" value="3">
       </label>
-
-      <label>Stream fps <output id="fps-value">25</output>
-        <input type="range" id="fps" min="1" max="30" step="1" value="25">
-      </label>
     </fieldset>
 
     <fieldset>
       <legend>Control</legend>
-
-      <label>Temperature range
-        <select id="range-mode">
-          <option value="normal">Normal (&minus;20 to 120 &deg;C)</option>
-          <option value="high">High (up to 400 &deg;C)</option>
-        </select>
-      </label>
-
+      <button type="button" onclick="toggleMarkers()" id="toggleMarkers">Toggle markers</button>
       <button type="button" id="calibrate">Calibrate shutter</button>
+
+      <input id="measureLabelNaming" type="text" name="label" placeholder="name here">
+      <button type="button" onclick="toggleAddMeasurePoint()" id="toggleAdding">Toggle marker adding</button>
     </fieldset>
 
     <form class="panel-form" id="parameters">
@@ -88,15 +80,6 @@
           <label>Emissivity
             <input type="number" name="emissivity" step="0.01" min="0.01" max="1" placeholder="0.95">
           </label>
-          <label>Distance m
-            <input type="number" name="distance_m" step="1" min="0" placeholder="1">
-          </label>
-        </div>
-
-        <div class="pair">
-          <label>Humidity
-            <input type="number" name="humidity" step="0.05" min="0" max="1" placeholder="0.45">
-          </label>
           <label>Offset &deg;C
             <input type="number" name="temperature_offset" step="0.1" placeholder="0">
           </label>
@@ -106,10 +89,8 @@
       </fieldset>
     </form>
   </aside>
-  <div>
-    <button type="button" onclick="toggleMarkers()" style="width: 150px; min-width: 50px;" id="toggleMarkers">Toggle markers</button>
-    <button type="button" onclick="toggleAddMeasurePoint()" style="width: 150px; min-width: 50px;" id="toggleAdding">Toggle marker adding</button>
-    <input id="measureLabelNaming" type="text" name="label">
+
+  <div> <!-- temporary area to add features here before fixing it somewhere else -->
   </div>
 </main>
 

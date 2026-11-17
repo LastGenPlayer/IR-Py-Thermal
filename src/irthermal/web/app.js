@@ -78,7 +78,7 @@ function streamQuery() {
 
   if (el("equalize").checked) query.set("equalize", "true");
   query.set("upscale", el("upscale").value);
-  query.set("fps", el("fps").value);
+  query.set("fps", 25); // make it configurable later
   return query;
 }
 
@@ -130,11 +130,8 @@ function render(message) {
 
   if (syncControls) {
     syncControls = false;
-    el("range-mode").value = message.adjustments.range_mode >= 400 ? "high" : "normal";
     const form = el("parameters");
     form.emissivity.placeholder = message.telemetry.emissivity.toFixed(2);
-    form.distance_m.placeholder = message.telemetry.distance_m;
-    form.humidity.placeholder = message.telemetry.humidity.toFixed(2);
     form.temperature_offset.placeholder = message.adjustments.user_offset.toFixed(1);
   }
 }
@@ -207,10 +204,10 @@ function renderTelemetry(message) {
     ["Air", degrees(t.air_temp_c)],
     ["Reflected", degrees(t.reflected_temp_c)],
     ["Emissivity", t.emissivity.toFixed(2)],
-    ["Humidity", t.humidity.toFixed(2)],
-    ["Distance", `${t.distance_m} m`],
+    ["Humidity", `0.45`], // hard coded due to no necessity for now
+    ["Distance", `1 m`], // hard coded due to no necessity for now
     ["Offset", degrees(message.adjustments.user_offset)],
-    ["Range", message.adjustments.range_mode >= 400 ? "high" : "normal"],
+    ["Range", "normal"],
     ["Correction", message.corrected ? "software" : "camera"],
     ["Firmware", t.firmware],
     ["Serial", t.serial],
@@ -292,7 +289,6 @@ function bind() {
 
   const sliders = [
     ["upscale", "upscale-value", "×"],
-    ["fps", "fps-value", ""],
   ];
   for (const [id, output, suffix] of sliders) {
     el(id).addEventListener("input", (event) => {
@@ -310,19 +306,6 @@ function bind() {
       showError(`Calibration failed: ${error.message}`);
     } finally {
       event.target.disabled = false;
-    }
-  });
-
-  el("range-mode").addEventListener("change", async (event) => {
-    try {
-      await api(`/cameras/${cameraId}/range`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: event.target.value }),
-      });
-      showError(null);
-    } catch (error) {
-      showError(`Range change failed: ${error.message}`);
     }
   });
 
